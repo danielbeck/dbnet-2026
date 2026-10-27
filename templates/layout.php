@@ -19,6 +19,7 @@
 <?= $dialogs ?>
 <script src="/assets/pool-navigation.js" defer></script>
 <script src="/assets/footnotes.js" defer></script>
+<script src="/assets/diagrams.js" defer></script>
 <?php if ($isAdmin): ?><script src="/assets/pool-editor.js" defer></script><?php endif; ?>
 <?= Template::render('partials/footer', ['isAdmin' => $isAdmin]) ?>
 </body>

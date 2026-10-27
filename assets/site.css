@@ -356,6 +356,33 @@ h1 {
   font: 14px/1.5 monospace;
 }
 
+.mermaid {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre;
+}
+
+.mermaid-rendered {
+  white-space: normal;
+}
+
+.mermaid svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-error {
+  padding: 1rem;
+  border: 1px solid #922b19;
+  white-space: normal;
+}
+
+.mermaid-error pre {
+  white-space: pre;
+  overflow: auto;
+}
+
 .site-footer {
   margin-top: 96px;
   padding: 16px;

@@ -134,7 +134,26 @@ final class Content
 
     public static function renderBody(PDO $db, string $body, string $format, ?array $contextPage = null): string
     {
+        $codeBlocks = [];
         if ($format === 'markdown') {
+            $body = str_replace(["\r\n", "\r"], "\n", $body);
+            $codePrefix = 'DBNETFENCEDCODE';
+            while (str_contains($body, $codePrefix)) {
+                $codePrefix .= 'X';
+            }
+            $body = preg_replace_callback(
+                '~^ {0,3}(`{3,}|\~{3,})[ \t]*([a-z0-9_+#.-]*)[ \t]*\n(.*?)(?:\n {0,3}\1[ \t]*(?=\n|$)|\z)~ims',
+                static function (array $match) use (&$codeBlocks, $codePrefix): string {
+                    $token = $codePrefix . count($codeBlocks) . 'END';
+                    $language = strtolower($match[2] !== '' ? $match[2] : 'text');
+                    $codeBlocks[$token] = rtrim(Template::render(
+                        $language === 'mermaid' ? 'content/mermaid' : 'content/code',
+                        ['language' => $language, 'code' => $match[3]]
+                    ));
+                    return "\n\n" . $token . "\n\n";
+                },
+                $body
+            ) ?? $body;
             $specialTags = [];
             $body = preg_replace_callback(
                 '/<footnote\b[^>]*>.*?<\/footnote\s*>|<pool[-_]list\b[^>]*>(?:\s*<\/pool[-_]list\s*>)?|<(?:highlightjs|router-link|nuxt-link)\b[^>]*>.*?<\/(?:highlightjs|router-link|nuxt-link)\s*>/is',
@@ -178,7 +197,10 @@ final class Content
                     $language = 'text';
                 }
                 $code = html_entity_decode($match[2], ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                return rtrim(Template::render('content/code', compact('language', 'code')));
+                return rtrim(Template::render(
+                    $language === 'mermaid' ? 'content/mermaid' : 'content/code',
+                    compact('language', 'code')
+                ));
             },
             $body
         ) ?? $body;
@@ -199,7 +221,10 @@ final class Content
         if ($notes) {
             $body .= Template::render('content/footnotes', ['notes' => $notes, 'prefix' => $footnotePrefix]);
         }
-        return $body;
+        foreach ($codeBlocks as $token => $code) {
+            $body = str_replace('<p>' . $token . '</p>', $code, $body);
+        }
+        return strtr($body, $codeBlocks);
     }
 
     public static function renderPoolList(PDO $db, string $attributes, ?array $contextPage = null): string

@@ -96,7 +96,20 @@ New items default to Markdown and inherit the current page and ancestor tags. Th
 
 The same editor works as a standalone form without JavaScript. Validation errors preserve text fields in a retry form; reselect any file upload before retrying.
 
-Content supports HTML and a small Markdown subset (headings, paragraphs, lists, emphasis, links, and inline code). Markdown also accepts trusted inline HTML, such as `<a href="...">links</a>` and `<em>emphasis</em>`; HTML inside backticks is displayed literally. As with HTML-format bodies, only trusted administrators should author this markup. Automatically generated list summaries remain escaped plain-text excerpts. Legacy `<highlightjs>` blocks are rendered as server-side code blocks, and `<router-link>` becomes a normal link. Special tags:
+Content supports HTML and a small Markdown subset (headings, paragraphs, lists, emphasis, links, and inline code). Markdown also accepts trusted inline HTML, such as `<a href="...">links</a>` and `<em>emphasis</em>`; HTML inside backticks is displayed literally. As with HTML-format bodies, only trusted administrators should author this markup. Automatically generated list summaries remain escaped plain-text excerpts. Legacy `<highlightjs>` blocks are rendered as server-side code blocks, and `<router-link>` becomes a normal link.
+
+Fenced code blocks support backticks or tildes and an optional language. Use `mermaid` as the language to render a diagram:
+
+````markdown
+```mermaid
+flowchart LR
+    A --> B
+```
+````
+
+Mermaid 12.2.0 is self-hosted under `assets/vendor/mermaid/` with its MIT license; no CDN or external rendering service is used. `assets/diagrams.js` loads the bundle only when a diagram is present and renders in strict security mode. HTML content can also use `<pre class="mermaid">...</pre>` (HTML-escape the diagram source), `<pre><code class="language-mermaid">...</code></pre>`, or `<highlightjs language="mermaid">...</highlightjs>`. Without JavaScript the source remains readable; load/syntax failures display an error and preserve the source. Other fenced languages render as escaped code, not executable HTML. To update Mermaid, replace the vendored bundle and license together from an official release and recheck diagrams.
+
+Special content tags:
 
 ```html
 <pool-list tag="blog,geek" type="summary" sort="desc" limit="10"></pool-list>
