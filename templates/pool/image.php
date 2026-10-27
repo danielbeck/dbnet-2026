@@ -1,0 +1,1 @@
+<div class="grid"><a href="<?= Content::escape($href) ?>"><?php if ($image !== ''): ?><img src="<?= Content::escape($thumbnail) ?>" alt="<?= Content::escape($item['title']) ?>" loading="lazy"><?php else: ?><?= Content::escape($item['title']) ?><?php endif; ?></a><div class="label"><?= Content::escape($item['title']) ?></div></div>

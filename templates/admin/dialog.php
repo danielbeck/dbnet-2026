@@ -1,0 +1,1 @@
+<dialog id="<?= h($id) ?>"<?= $id === 'page-dialog' ? ' class="admin-card wide"' : '' ?> aria-labelledby="<?= h($headingId) ?>"><h2 id="<?= h($headingId) ?>"><?= h($label) ?></h2><?= $form ?></dialog>

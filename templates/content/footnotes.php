@@ -1,0 +1,1 @@
+<ol class="footnotes"><?php foreach ($notes as $number => $note): ?><li id="footnote-<?= $number ?>"><?= $note ?> <a href="#footnote-ref-<?= $number ?>" aria-label="Back to reference">↩</a></li><?php endforeach; ?></ol>
