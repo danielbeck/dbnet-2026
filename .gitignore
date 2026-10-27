@@ -1,2 +1,5 @@
 /storage/*.sqlite*
 /content/*
+/.env
+/.env.*
+!/.env.example

@@ -2,10 +2,16 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REMOTE="${DEPLOY_TARGET:-u79456718@home557350892.1and1-data.host:db}"
-
 if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--dry-run" ) ]]; then
     echo "Usage: $0 [--dry-run]" >&2
+    exit 1
+fi
+if [[ -z "${DEPLOY_TARGET+x}" && -f "$ROOT/.env" ]]; then
+    source "$ROOT/.env"
+fi
+REMOTE="${DEPLOY_TARGET:-}"
+if [[ -z "$REMOTE" ]]; then
+    echo "Set DEPLOY_TARGET in $ROOT/.env or in the environment. See .env.example." >&2
     exit 1
 fi
 if [[ "$REMOTE" != *:* || "$REMOTE" == -* || -z "${REMOTE##*:}" ]]; then

@@ -148,13 +148,15 @@ final class Content
             $body = self::markdown($body);
             $body = strtr($body, $specialTags);
         }
+        static $footnoteGroup = 0;
+        $footnotePrefix = $footnoteGroup++ === 0 ? '' : 'group-' . $footnoteGroup . '-';
         $notes = [];
         $body = preg_replace_callback(
             '/<footnote\b[^>]*>(.*?)<\/footnote\s*>/is',
-            static function (array $match) use (&$notes): string {
+            static function (array $match) use (&$notes, $footnotePrefix): string {
                 $number = count($notes) + 1;
                 $notes[$number] = $match[1];
-                return rtrim(Template::render('content/footnote-reference', ['number' => $number]));
+                return rtrim(Template::render('content/footnote-reference', ['number' => $number, 'prefix' => $footnotePrefix]));
             },
             $body
         ) ?? $body;
@@ -195,7 +197,7 @@ final class Content
         ) ?? $body;
 
         if ($notes) {
-            $body .= Template::render('content/footnotes', ['notes' => $notes]);
+            $body .= Template::render('content/footnotes', ['notes' => $notes, 'prefix' => $footnotePrefix]);
         }
         return $body;
     }
@@ -363,16 +365,32 @@ final class Content
 
     private static function inlineMarkdown(string $text): string
     {
+        $tokens = [];
+        $prefix = 'DBNETINLINETOKEN';
+        while (str_contains($text, $prefix)) {
+            $prefix .= 'X';
+        }
+        $text = preg_replace_callback(
+            '~`([^`]+)`|<!--.*?-->|</?[a-zA-Z][a-zA-Z0-9:-]*\b(?:[^<>"\']|"[^"]*"|\'[^\']*\')*>~',
+            static function (array $match) use (&$tokens, $prefix): string {
+                $token = $prefix . count($tokens) . 'END';
+                $tokens[$token] = $match[0][0] === '`'
+                    ? '<code>' . self::escape($match[1]) . '</code>'
+                    : $match[0];
+                return $token;
+            },
+            $text
+        ) ?? $text;
         $text = self::escape($text);
-        $text = preg_replace('/`([^`]+)`/', '<code>$1</code>', $text) ?? $text;
         $text = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $text) ?? $text;
         $text = preg_replace('/\*(.+?)\*/', '<em>$1</em>', $text) ?? $text;
-        return preg_replace_callback('/\[([^\]]+)\]\(([^)]+)\)/', static function (array $match): string {
+        $text = preg_replace_callback('/\[([^\]]+)\]\(([^)]+)\)/', static function (array $match): string {
             $url = html_entity_decode($match[2], ENT_QUOTES | ENT_HTML5, 'UTF-8');
             if (!preg_match('~^(https?://|/|#)~i', $url) || str_starts_with($url, '//')) {
                 return $match[1];
             }
             return '<a href="' . self::escape($url) . '">' . $match[1] . '</a>';
         }, $text) ?? $text;
+        return strtr($text, $tokens);
     }
 }

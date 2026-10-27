@@ -19,7 +19,7 @@ The SQLite database is `storage/dbnet.sqlite`, inside the deploy folder as reque
    php bin/initialize.php
    ```
 
-   This creates only Home (`/`) and Archive (`/archive/`), with no imported content or page hierarchy. Skip this if deploying an already-populated database. Repeated runs leave existing pages untouched, and normal requests never recreate deleted pages.
+   This creates only Home (`/`) and Archive (`/archive/`), with no imported content or page hierarchy. Archive is visible in the navbar and is the canonical home for all pool items. Skip this if deploying an already-populated database. Repeated runs leave existing pages untouched, and normal requests never recreate deleted pages.
 3. Create an administrator from the webroot command line:
 
    ```sh
@@ -38,6 +38,8 @@ Pages and pool items are separate records. Pages form the URL hierarchy; each pa
 
 Previous/next controls use the original stacked circular arrows in the left content gutter, with faded non-interactive arrows at list boundaries. On narrow screens they sit side by side above the body to avoid clipping.
 
+On individual pool items, Left/Right arrow keys navigate to the previous/next item when focus is on the page rather than a control. Swiping right/left over the item also navigates, with a threshold greater than 100px and horizontal movement dominating vertical movement. Links, form controls, editable text, code blocks, open dialogs, and multi-touch gestures do not trigger swipe navigation. These shortcuts use the rendered previous/next URLs, preserving list context and stopping at list boundaries; ordinary links still work without JavaScript.
+
 Pool item types and their fields are declared in `app/Types.php`; the shared editor renders declared fields automatically. Rendering templates are selected through the same type registry, without changes to the router.
 
 ### Editing layouts and item templates
@@ -46,16 +48,16 @@ PHP templates live under `templates/`:
 
 - `layout.php`, `partials/`: document shell, navigation, auth controls, notices, and footer.
 - `page.php`, `not-found.php`: ordinary page layouts.
-- `pool/detail.php`, `pool/navigation.php`: full item pages and previous/next controls.
-- `pool/list.php`, `pool/summary.php`, `pool/image.php`: individual entries inside pool lists.
+- `pool/article/`, `pool/photo/`, `pool/project/`: independent `detail.php`, `list.php`, `summary.php`, and `image.php` layouts for each item type.
+- `pool/navigation.php`: shared previous/next controls.
 - `pool/container.php`: list wrapper (the image view uses `imagegrid`; other views use `pool-list`).
 - `content/`: footnotes, code blocks, and special-tag links.
 - `feeds/`: RSS and XML sitemap layouts.
 - `admin/`: login, dashboard, editor wrappers/dialogs, contextual controls, and page/pool forms.
 
-`Template::render('pool/summary', $variables)` loads `templates/pool/summary.php` with explicit local variables. Missing files and invalid template names throw errors; request parameters cannot select arbitrary filesystem paths. Templates are protected from direct web access, and `deploy.sh` includes them.
+`Template::render('pool/project/summary', $variables)` loads `templates/pool/project/summary.php` with explicit local variables. Missing files and invalid template names throw errors; request parameters cannot select arbitrary filesystem paths. Templates are protected from direct web access, and `deploy.sh` includes them.
 
-All item types inherit the `detail`, `list`, `summary`, and `image` views. Add a `templates` map to an item type in `Types::all()` to override a view or register an additional one:
+Each item type explicitly declares its own views in the `templates` map in `Types::all()`; there are no inherited shared defaults. Initially each has `detail`, `list`, `summary`, and `image`, with the same appearance but separate files. Editing a Project template does not change Articles or Photos. To add a Project-only `card` option, create `templates/pool/project/card.php` and add it only to the Project map:
 
 ```php
 'project' => [
@@ -66,14 +68,19 @@ All item types inherit the `detail`, `list`, `summary`, and `image` views. Add a
     ],
     'templates' => [
         'detail' => 'pool/project/detail',
+        'list' => 'pool/project/list',
         'summary' => 'pool/project/summary',
+        'image' => 'pool/project/image',
         'card' => 'pool/project/card',
-        // 'image' => null, // Optional: disable an inherited view.
     ],
 ],
 ```
 
-Create the corresponding PHP files, then use `<pool-list tag="project" type="card"></pool-list>`. `detail` is reserved for full item pages, not pool lists. A list view must be available for every item type selected by that list; an unsupported view raises an explicit error instead of silently choosing another layout. To make a new view available to every type, add it to the shared defaults in `Types::templates()`. Customize the wrapper for new views in `pool/container.php`.
+Then use `<pool-list tag="project" type="card"></pool-list>`. Tags select items, not item types, so ensure the selected items are Projects when using a Project-only option. `detail` is reserved for full item pages, not pool lists. A list view must be available for every item type selected by that list; an unsupported view raises an explicit error instead of silently choosing another layout. Remove a map entry to disable a view for that type; keep `detail` available for full item pages. To offer a new view for other types, register it in their maps as well.
+
+The list wrapper (`pool/container.php`) and previous/next controls (`pool/navigation.php`) remain shared. For a Project-only card wrapper, branch on `$view === 'card'` in the container; existing list views remain unchanged.
+
+Image-grid titles animate open below the thumbnail on hover or keyboard focus, and remain visible on touch devices. Reveals start immediately; collapse waits 400ms so scanning across a row does not make the grid bounce. Captions wrap to their full height in normal document flow, moving subsequent rows down instead of overlapping them. Reduced-motion preferences disable the animation. Items without images always show their title. Each link has the full title as its accessible name.
 
 List-entry templates receive `$item` (including raw `fields`), `$href` (with list context), `$date`, `$image`, `$thumbnail`, `$summary`, `$view`, `$contextPage`, and `$attributes` (the parsed pool-list attributes). Full-item templates receive `$item`, `$contextPage`, `$date`, `$image`, `$fields` (field definitions), `$body` (rendered HTML), `$previousUrl`, and `$nextUrl`. Data selection, sorting, limits, and URL generation remain outside templates.
 
@@ -89,15 +96,17 @@ New items default to Markdown and inherit the current page and ancestor tags. Th
 
 The same editor works as a standalone form without JavaScript. Validation errors preserve text fields in a retry form; reselect any file upload before retrying.
 
-Content supports HTML and a small Markdown subset (headings, paragraphs, lists, emphasis, links, and inline code). Legacy `<highlightjs>` blocks are rendered as server-side code blocks, and `<router-link>` becomes a normal link. Special tags:
+Content supports HTML and a small Markdown subset (headings, paragraphs, lists, emphasis, links, and inline code). Markdown also accepts trusted inline HTML, such as `<a href="...">links</a>` and `<em>emphasis</em>`; HTML inside backticks is displayed literally. As with HTML-format bodies, only trusted administrators should author this markup. Automatically generated list summaries remain escaped plain-text excerpts. Legacy `<highlightjs>` blocks are rendered as server-side code blocks, and `<router-link>` becomes a normal link. Special tags:
 
 ```html
 <pool-list tag="blog,geek" type="summary" sort="desc" limit="10"></pool-list>
 <pool-list page="photos" type="image"></pool-list>
-<footnote>A numbered note shown at the end of the content.</footnote>
+<footnote>A numbered note shown in a floating panel beside its reference.</footnote>
 ```
 
 `pool-list` supports `tag` (comma-separated OR filter), `page` (page ID), `type` (`list`, `summary`, `image`), `sort` (`asc` or `desc`), `limit` (count or `[start,end]`), and `path` (internal URL prefix override). Filtered output is rendered by PHP as part of the initial response.
+
+Click or tap a numbered footnote reference (or activate it with Enter) to open its floating panel. Panels stay within the viewport, reposition on scroll/resize, and close using Close, Escape, another footnote, or a click outside. Pool-item navigation shortcuts are paused while a footnote is open. Without JavaScript or browser Popover API support, references link to ordinary endnotes instead.
 
 Tagged pages (and Archive) get an automatic list only when their body has no explicit `pool-list` or `pool_list` tag. Embedded lists control their own placement and filtering without an extra list being appended.
 
@@ -123,11 +132,15 @@ RSS endpoints are rendered dynamically at `/rss.xml`, `/rss-blog.xml`, `/rss-pho
 Opens the development server at `http://127.0.0.1:8080`; stop it with Ctrl+C. Override the address with `HOST` and `PORT`, for example `PORT=8081 ./dev.sh`. The script works from any working directory.
 
 ```sh
+cp .env.example .env
+# Set DEPLOY_TARGET in .env to your SSH destination.
 ./deploy.sh --dry-run
 ./deploy.sh
 ```
 
-Deployment uses rsync over SSH to `u79456718@home557350892.1and1-data.host:db`. Override with `DEPLOY_TARGET=user@host:directory`. The script shows a dry run and requires confirmation before uploading. It deploys application code, framework assets, access-protection files, and the initialization and admin-account CLIs. Local development scripts and documentation are not uploaded.
+Deployment uses rsync over SSH to `DEPLOY_TARGET` from the project's local `.env`, for example `DEPLOY_TARGET='user@host:directory'`. An environment variable overrides the file, e.g. `DEPLOY_TARGET=user@host:directory ./deploy.sh --dry-run`. A missing or empty target is an error. The `.env` file is sourced as trusted Bash configuration, so keep it local and do not load untrusted files. It is ignored by Git and excluded from deployment; `.env.example` contains only a placeholder.
+
+The script shows a dry run and requires confirmation before uploading. It deploys application code, framework assets, access-protection files, and the initialization and admin-account CLIs. Local environment files, development scripts, and documentation are not uploaded.
 
 **Code deployment never uploads SQLite files, storage data, or content media, and never deletes remote files.** Only protection files are uploaded within `content/`. Production content, accounts, and uploaded images are preserved. The app creates missing tables and indexes but no longer upgrades old table layouts. Removed code files (including old import/migration tools) must be cleaned up separately on previously deployed servers after review.
 

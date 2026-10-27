@@ -20,7 +20,7 @@ try {
         );
         $now = time();
         $insert->execute(['Home', '', 'Home', 'Home', 0, 0, $now, $now]);
-        $insert->execute(['archive', 'archive', 'Archive', 'Archive', 0, 90, $now, $now]);
+        $insert->execute(['archive', 'archive', 'Archive', 'Archive', 1, 90, $now, $now]);
     }
     $db->commit();
 } catch (Throwable $error) {

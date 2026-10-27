@@ -613,7 +613,7 @@ $topPages = Content::children($db, null, true);
 $activePath = $requestPath;
 $navigationRows = [[]];
 foreach ($topPages as $topPage) {
-    if ($topPage['id'] === 'Home' || $topPage['id'] === 'archive') {
+    if ($topPage['id'] === 'Home') {
         continue;
     }
     $topPath = Content::pagePath($db, $topPage);

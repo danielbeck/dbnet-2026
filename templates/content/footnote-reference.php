@@ -1,1 +1,1 @@
-<sup class="footnote"><a href="#footnote-<?= $number ?>" id="footnote-ref-<?= $number ?>">[<?= $number ?>]</a></sup>
+<sup class="footnote"><a href="#footnote-<?= Content::escape($prefix) ?><?= $number ?>" id="footnote-ref-<?= Content::escape($prefix) ?><?= $number ?>" data-footnote-reference>[<?= $number ?>]</a></sup>
