@@ -129,6 +129,8 @@ Tagged pages (and Archive) get an automatic list only when their body has no exp
 
 ## URLs and deployment
 
+The root `.htaccess` uses `RewriteBase /` for hosting where the domain points to a subdirectory of the account's filesystem (including IONOS). Deploy this application at the domain root. The front-controller rewrite uses Apache 2.4's `END` flag to prevent further per-directory rewrite passes. If the home page and static files work but other routes return Apache 500 errors, confirm this `.htaccess` was uploaded and check the Apache error log for rewrite errors.
+
 Page paths are stored in the editable hierarchy; fresh setup does not recreate the original site's tree. Each pool item receives its archive URL plus a URL under each page with a matching tag filter. Keep all `.htaccess` files and the `storage/` folder in the deployed directory. Uploads accept JPEG, PNG, GIF, and WebP files up to 12 MB and use generated filenames.
 
 ### Asset locations

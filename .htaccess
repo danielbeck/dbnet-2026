@@ -2,6 +2,7 @@ Options -Indexes
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteBase /
 
     RewriteRule (^|/)\. - [F,L]
     RewriteRule ^(?:app|bin|storage|templates)(?:/|$) - [F,L,NC]
@@ -10,7 +11,7 @@ Options -Indexes
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    RewriteRule ^ index.php [QSA,L]
+    RewriteRule ^ index.php [QSA,END]
 </IfModule>
 
 <IfModule mod_headers.c>
