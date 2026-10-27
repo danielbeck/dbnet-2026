@@ -2,6 +2,8 @@
 
 Server-rendered PHP replacement for dbnet-nuxt. It deploys as one directory in the IONOS webroot: PHP renders routes on each request, content and navigation are stored in SQLite, and the admin interface is available on the live site at `/admin/`.
 
+The top navigation has a subtle scroll parallax, moving out of view at 60% of the content's speed. The offset is capped once the navigation is offscreen. Reduced-motion preferences disable the effect, including when changed while viewing a page; without JavaScript, scrolling is unchanged.
+
 ## Requirements
 
 - PHP 8.1+ with PDO SQLite (`pdo_sqlite`)
@@ -86,7 +88,7 @@ List-entry templates receive `$item` (including raw `fields`), `$href` (with lis
 
 Escape plain values with `Content::escape()` (or `h()` in site/admin templates). Only already-rendered HTML such as `$body`, `$entries`, and editor `$form` should be emitted directly. Templates are trusted developer code, not editable content. Markdown parsing still generates its basic paragraph/list/inline markup in `Content.php`.
 
-Available types are Article (no extra fields), Photo (camera metadata), and Project (optional URL and GithubURL fields). Project URLs are stored with the item's fields and displayed with its metadata. Choosing Project does not automatically add the `project` tag; tags still control page listing.
+Available types are Article (no extra fields), Photo (camera metadata), and Project (optional URL and GithubURL fields). Project list entries are responsive, thumbnail-led cards with title, excerpt, and a subdued date; missing images or excerpts are simply omitted. Cards open the item detail while preserving list context. Project details emphasize a **Visit project** action above the body, with **View on GitHub** as a secondary link when supplied. The preview image appears after the body, limited to 280px wide and 200px high. Links require valid HTTP(S) URLs; invalid stored values are shown as text with an explicit warning rather than turned into unsafe links. Article and Photo layouts are unchanged. Choosing Project does not automatically add the `project` tag; tags still control page listing.
 
 Pool-item titles support inline formatting (`em`, `strong`, `b`, `i`, `s`, `strike`, `del`, `sub`, `sup`, `code`, `br`) in headings, lists, and grid captions. Attributes and other tags are removed. Browser-tab titles, image alt text, accessible link names, and RSS titles use plain text; editors retain the original markup.
 
@@ -148,7 +150,11 @@ RSS endpoints are rendered dynamically at `/rss.xml`, `/rss-blog.xml`, `/rss-pho
 ./dev.sh
 ```
 
-Opens the development server at `http://127.0.0.1:8080`; stop it with Ctrl+C. Override the address with `HOST` and `PORT`, for example `PORT=8081 ./dev.sh`. The script works from any working directory.
+Before starting PHP, `dev.sh` downloads a consistent production SQLite snapshot and synchronizes new/changed content files using the same `DEPLOY_TARGET` setting as deployment. **Production is the source of truth: local database edits and accounts are replaced.** A timestamped `storage/before-dev-sync-*.sqlite` backup preserves the previous local database; these private backups are Git-ignored and never deployed. Content files are updated without deleting local-only media or replacing local protection files. Failed downloads, integrity checks, or media syncs abort startup before replacing the local database.
+
+The remote snapshot uses PHP PDO SQLite's `VACUUM INTO`, so it includes committed WAL data without copying a live database file unsafely. Only a temporary snapshot is created on the server and removed afterward; the live database is never replaced. SSH/rsync and remote command-line PHP with PDO SQLite are required; local PHP also needs the SQLite3 extension. The sync checks `php` and versioned `php8.4-cli` through `php8.1-cli` executables, skipping CGI binaries (IONOS may make `php` a CGI executable that rejects `-r`). Set `REMOTE_PHP='/usr/bin/php8.3-cli'` in `.env` to select an explicit executable instead; it must report the CLI SAPI. If none is available, startup fails with a configuration message before replacing local data.
+
+After sync, opens the development server at `http://127.0.0.1:8080`; stop it with Ctrl+C. Stop any existing local dev servers before running this command (an occupied configured port aborts before sync). Override the address with `HOST` and `PORT`, for example `PORT=8081 ./dev.sh`. The script works from any working directory. Sync does not upload code, local database edits, or media to production.
 
 ```sh
 cp .env.example .env
