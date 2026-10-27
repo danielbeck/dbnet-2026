@@ -1,185 +1,126 @@
 # dbnet-2026
 
-Server-rendered PHP replacement for dbnet-nuxt. It deploys as one directory in the IONOS webroot: PHP renders routes on each request, content and navigation are stored in SQLite, and the admin interface is available on the live site at `/admin/`.
-
-The top navigation has a subtle scroll parallax, moving out of view at 60% of the content's speed. The offset is capped once the navigation is offscreen. Reduced-motion preferences disable the effect, including when changed while viewing a page; without JavaScript, scrolling is unchanged.
+A server-rendered PHP site with SQLite storage and a live admin interface for managing pages and content.
 
 ## Requirements
 
 - PHP 8.1+ with PDO SQLite (`pdo_sqlite`)
-- Apache with `.htaccess` overrides enabled (`mod_rewrite` and `mod_authz_core`)
-- A writable `storage/` directory
+- Apache 2.4 with `mod_rewrite`, `mod_authz_core`, and `.htaccess` overrides enabled
+- Writable `storage/` and `content/pool/` directories
+- For development sync and deployment: SSH and rsync on both machines, remote PHP CLI with PDO SQLite, and local PHP with the SQLite3 extension
 
-The SQLite database is `storage/dbnet.sqlite`, inside the deploy folder as requested. The root and storage `.htaccess` files deny direct web requests to it. Keep those access rules deployed, and confirm the host honors them before placing real data in the folder.
+## Installation
 
-## First use
-
-1. Copy the full project into the webroot, including hidden `.htaccess` files.
-2. Ensure PHP can write to `storage/`. The app creates the SQLite database and current schema automatically. To start from a missing or empty SQLite file, create the two required pages:
+1. Copy the application to the domain's webroot, including all hidden `.htaccess` files. Hosting at the domain root is required.
+2. Ensure PHP can write to `storage/` and `content/pool/`.
+3. For a fresh site, initialize the required Home and Archive pages:
 
    ```sh
    php bin/initialize.php
    ```
 
-   This creates only Home (`/`) and Archive (`/archive/`), with no imported content or page hierarchy. Archive is visible in the navbar and is the canonical home for all pool items. Skip this if deploying an already-populated database. Repeated runs leave existing pages untouched, and normal requests never recreate deleted pages.
-3. Create an administrator from the webroot command line:
+4. Create an administrator:
 
    ```sh
    php bin/create-admin.php YOUR_USERNAME
    ```
 
-   Passwords are stored with PHP's password hashing. Use at least 12 characters.
-4. Visit `/admin/login` on the live site to add or edit pages and pool items.
-Edit or add pages in the admin; a page's parent and URL segment define its URL, while its optional navigation text is independent of its page title. Parent changes affect descendant URLs, so check existing links when rearranging pages.
+   Use a password of at least 12 characters.
+5. Visit `/admin/login` to sign in and start adding content.
 
-The one-time importers, original page-tree seeds, asset-path migrations, and old-schema upgrades have been removed. Existing installations must already use the current schema and asset paths. The working database has completed those migrations; keep it intact. Stored URL aliases and content-tag rendering remain supported because existing content uses them.
+The database is stored at `storage/dbnet.sqlite`. To install an existing site, transfer a consistent SQLite backup and its `content/` directory instead of initializing an empty site. Keep all access-protection files in place, and verify that the host blocks web access to `storage/` before uploading private data.
 
-## Content and pool items
+On IONOS, use a PHP **CLI** executable for command-line tasks; the default `php` may be a CGI executable. If the home page works but other routes return HTTP 500, confirm the root `.htaccess` was uploaded and check the Apache error log.
 
-Pages and pool items are separate records. Pages form the URL hierarchy; each page's pool tag filter selects items with that tag, with no explicit membership assignments. Matching items are available beneath that page's URL and at `/archive/{slug}.html`. Untagged pages have no default items; Archive always includes all items. Explicit `pool-list tag="..."` filters override the page filter, while `pool-list page="..."` uses the referenced page's tag. Previous/next links follow the tag-filtered list context in which the item was opened. Tag-filtered list links preserve that context with a `list` query parameter when needed.
+## Managing content
 
-Previous/next controls use the original stacked circular arrows in the left content gutter, with faded non-interactive arrows at list boundaries. On narrow screens they sit side by side above the body to avoid clipping.
+Use **Admin** in the footer to sign in. Once signed in:
 
-On individual pool items, Left/Right arrow keys navigate to the previous/next item when focus is on the page rather than a control. Swiping right/left over the item also navigates, with a threshold greater than 100px and horizontal movement dominating vertical movement. Links, form controls, editable text, code blocks, open dialogs, and multi-touch gestures do not trigger swipe navigation. These shortcuts use the rendered previous/next URLs, preserving list context and stopping at list boundaries; ordinary links still work without JavaScript.
+- **Manage site** opens the dashboard for adding pages and arranging the hierarchy.
+- **Edit page**, **Add pool item**, and **Edit pool item** open editors on the page you are viewing.
+- **Log out** ends the session.
 
-Pool item types and their fields are declared in `app/Types.php`; the shared editor renders declared fields automatically. Rendering templates are selected through the same type registry, without changes to the router.
+### Pages and pool items
 
-### Editing layouts and item templates
+**Pages** define the site's URL hierarchy and navigation. Each page has a parent, URL segment, body, and optional tag filter. Changing a parent changes descendant URLs, so check existing links after rearranging pages.
 
-PHP templates live under `templates/`:
+**Pool items** are reusable content records: Articles, Photos, or Projects. Projects have additional project and GitHub URL fields. Tags determine which pages list an item; a tag is not an item type.
 
-- `layout.php`, `partials/`: document shell, navigation, auth controls, notices, and footer.
-- `page.php`, `not-found.php`: ordinary page layouts.
-- `pool/article/`, `pool/photo/`, `pool/project/`: independent `detail.php`, `list.php`, `summary.php`, and `image.php` layouts for each item type.
-- `pool/navigation.php`: shared previous/next controls.
-- `pool/container.php`: list wrapper (the image view uses `imagegrid`; other views use `pool-list`).
-- `content/`: footnotes, code blocks, and special-tag links.
-- `feeds/`: RSS and XML sitemap layouts.
-- `admin/`: login, dashboard, editor wrappers/dialogs, contextual controls, and page/pool forms.
+Items can appear beneath any page with a matching tag filter, and every item has a canonical URL under `/archive/`. Archive includes all items. Previous/next links, arrow keys, and swipe navigation follow the list in which the item was opened.
 
-`Template::render('pool/project/summary', $variables)` loads `templates/pool/project/summary.php` with explicit local variables. Missing files and invalid template names throw errors; request parameters cannot select arbitrary filesystem paths. Templates are protected from direct web access, and `deploy.sh` includes them.
+### Writing content
 
-Each item type explicitly declares its own views in the `templates` map in `Types::all()`; there are no inherited shared defaults. Initially each has `detail`, `list`, `summary`, and `image`, with the same appearance but separate files. Editing a Project template does not change Articles or Photos. To add a Project-only `card` option, create `templates/pool/project/card.php` and add it only to the Project map:
+Bodies support HTML or a small Markdown subset, including headings, lists, links, emphasis, inline HTML, and fenced code blocks. Only trusted administrators should author HTML. Add a language to a code fence for syntax highlighting, or use `mermaid` for diagrams.
 
-```php
-'project' => [
-    'label' => 'Project',
-    'fields' => [
-        'url' => ['label' => 'URL', 'type' => 'url'],
-        'github_url' => ['label' => 'GithubURL', 'type' => 'url'],
-    ],
-    'templates' => [
-        'detail' => 'pool/project/detail',
-        'list' => 'pool/project/list',
-        'summary' => 'pool/project/summary',
-        'image' => 'pool/project/image',
-        'card' => 'pool/project/card',
-    ],
-],
-```
-
-Then use `<pool-list tag="project" type="card"></pool-list>`. Tags select items, not item types, so ensure the selected items are Projects when using a Project-only option. `detail` is reserved for full item pages, not pool lists. A list view must be available for every item type selected by that list; an unsupported view raises an explicit error instead of silently choosing another layout. Remove a map entry to disable a view for that type; keep `detail` available for full item pages. To offer a new view for other types, register it in their maps as well.
-
-The list wrapper (`pool/container.php`) and previous/next controls (`pool/navigation.php`) remain shared. For a Project-only card wrapper, branch on `$view === 'card'` in the container; existing list views remain unchanged.
-
-Image-grid titles animate open below the thumbnail on hover or keyboard focus, and remain visible on touch devices. Reveals start immediately; collapse waits 400ms so scanning across a row does not make the grid bounce. Captions wrap to their full height in normal document flow, moving subsequent rows down instead of overlapping them. Reduced-motion preferences disable the animation. Items without images always show their title. Each link has the full title as its accessible name.
-
-List-entry templates receive `$item` (including raw `fields`), `$href` (with list context), `$date`, `$image`, `$thumbnail`, `$summary`, `$view`, `$contextPage`, and `$attributes` (the parsed pool-list attributes). Full-item templates receive `$item`, `$contextPage`, `$date`, `$image`, `$fields` (field definitions), `$body` (rendered HTML), `$previousUrl`, and `$nextUrl`. Data selection, sorting, limits, and URL generation remain outside templates.
-
-Escape plain values with `Content::escape()` (or `h()` in site/admin templates). Only already-rendered HTML such as `$body`, `$entries`, and editor `$form` should be emitted directly. Templates are trusted developer code, not editable content. Markdown parsing still generates its basic paragraph/list/inline markup in `Content.php`.
-
-Available types are Article (no extra fields), Photo (camera metadata), and Project (optional URL and GithubURL fields). Project list entries are responsive, thumbnail-led cards with title, excerpt, and a subdued date; missing images or excerpts are simply omitted. Cards open the item detail while preserving list context. Project details emphasize a **Visit project** action above the body, with **View on GitHub** as a secondary link when supplied. The preview image appears after the body, limited to 280px wide and 200px high. Links require valid HTTP(S) URLs; invalid stored values are shown as text with an explicit warning rather than turned into unsafe links. Article and Photo layouts are unchanged. Choosing Project does not automatically add the `project` tag; tags still control page listing.
-
-Pool-item titles support inline formatting (`em`, `strong`, `b`, `i`, `s`, `strike`, `del`, `sub`, `sup`, `code`, `br`) in headings, lists, and grid captions. Attributes and other tags are removed. Browser-tab titles, image alt text, accessible link names, and RSS titles use plain text; editors retain the original markup.
-
-### Pool authoring
-
-Use **Admin** in the footer to sign in and return to the page you were browsing. When signed in, **Manage site** and **Log out** appear together there. Signed-in visitors see **Edit page** and **Add pool item** on pages and **Edit pool item** on individual items. These open in-page modals; Cancel or Escape dismisses them and discards unsaved edits. Page editing uses the same fields as the standalone editor; saving returns to the page's updated URL and deleting returns to its parent (or Home). **Manage site** remains available for adding pages and managing the hierarchy. Both editors have standalone links as a no-JavaScript fallback.
-
-New items default to Markdown and inherit the current page and ancestor tags. The editor offers title-to-slug generation until the slug is edited manually, separate tag fields with existing-tag suggestions, image and thumbnail-size previews, and a **Fix HTML** action that normalizes markup using the browser's HTML parser. Smart quotes are applied on save without changing HTML attributes or code blocks. Fields for the selected item type appear directly below the type selector, before Format and Body. Save returns to the saved item, preserving list query context where applicable; Delete returns to its containing page. The thumbnail preview shows a cropped view, not a separately generated thumbnail file.
-
-The same editor works as a standalone form without JavaScript. Validation errors preserve text fields in a retry form; reselect any file upload before retrying.
-
-Content supports HTML and a small Markdown subset (headings, paragraphs, lists, emphasis, links, and inline code). Markdown also accepts trusted inline HTML, such as `<a href="...">links</a>` and `<em>emphasis</em>`; HTML inside backticks is displayed literally. As with HTML-format bodies, only trusted administrators should author this markup. Automatically generated list summaries remain escaped plain-text excerpts. Legacy `<highlightjs>` blocks are rendered as server-side code blocks, and `<router-link>` becomes a normal link.
-
-Fenced code blocks support backticks or tildes and an optional language. Use `mermaid` as the language to render a diagram:
-
-````markdown
-```mermaid
-flowchart LR
-    A --> B
-```
-````
-
-Mermaid 12.2.0 is self-hosted under `assets/vendor/mermaid/` with its MIT license; no CDN or external rendering service is used. `assets/diagrams.js` loads the bundle only when a diagram is present and renders in strict security mode. HTML content can also use `<pre class="mermaid">...</pre>` (HTML-escape the diagram source), `<pre><code class="language-mermaid">...</code></pre>`, or `<highlightjs language="mermaid">...</highlightjs>`. Without JavaScript the source remains readable; load/syntax failures display an error and preserve the source. Other fenced languages render as escaped code, not executable HTML. To update Mermaid, replace the vendored bundle and license together from an official release and recheck diagrams.
-
-Code syntax coloring uses self-hosted highlight.js 11.11.1 with the original GitHub light theme. `assets/syntax.js` loads its bundle and stylesheet from `assets/vendor/highlight/` only on pages with code blocks. Fenced blocks with a language and `<highlightjs language="...">` / `<highlightjs lang="...">` blocks get syntax coloring. A `<highlightjs>` block without a language auto-detects among the original site's languages; unlabelled fences and explicit `text` blocks stay plain. Unsupported languages remain readable and log a warning. Without JavaScript, escaped source is still visible. The bundle includes all highlight.js languages and its BSD license; it was built from the official package's `lib/index.js` using esbuild (`--bundle --minify --format=iife --global-name=hljs`).
-
-Special content tags:
+Special tags work in page and item bodies:
 
 ```html
 <pool-list tag="blog,geek" type="summary" sort="desc" limit="10"></pool-list>
 <pool-list page="photos" type="image"></pool-list>
-<footnote>A numbered note shown in a floating panel beside its reference.</footnote>
+<footnote>A note shown in a floating panel beside its reference.</footnote>
 ```
 
-`pool-list` supports `tag` (comma-separated OR filter), `page` (page ID), `type` (`list`, `summary`, `image`), `sort` (`asc` or `desc`), `limit` (count or `[start,end]`), and `path` (internal URL prefix override). Filtered output is rendered by PHP as part of the initial response.
+For `pool-list`:
 
-Click or tap a numbered footnote reference (or activate it with Enter) to open its floating panel. Panels stay within the viewport, reposition on scroll/resize, and close using Close, Escape, another footnote, or a click outside. Pool-item navigation shortcuts are paused while a footnote is open. Without JavaScript or browser Popover API support, references link to ordinary endnotes instead.
+- `tag`: comma-separated tags, matching any of them
+- `page`: a page ID whose tag filter should be used
+- `type`: a registered view, normally `list`, `summary`, or `image`
+- `sort`: `asc` or `desc`
+- `limit`: a count or `[start,end]` range
 
-Tagged pages (and Archive) get an automatic list only when their body has no explicit `pool-list` or `pool_list` tag. Embedded lists control their own placement and filtering without an extra list being appended.
+A tagged page gets an automatic item list unless its body already contains a pool-list tag. An explicit `tag` filter overrides the page filter.
 
-## URLs and deployment
+Image uploads accept JPEG, PNG, GIF, and WebP files up to 12 MB. Uploaded item images live in `content/pool/`; use `/content/` URLs for other content media.
 
-The root `.htaccess` uses `RewriteBase /` for hosting where the domain points to a subdirectory of the account's filesystem (including IONOS). Deploy this application at the domain root. The front-controller rewrite uses Apache 2.4's `END` flag to prevent further per-directory rewrite passes. If the home page and static files work but other routes return Apache 500 errors, confirm this `.htaccess` was uploaded and check the Apache error log for rewrite errors.
+## Local development
 
-Page paths are stored in the editable hierarchy; fresh setup does not recreate the original site's tree. Each pool item receives its archive URL plus a URL under each page with a matching tag filter. Keep all `.htaccess` files and the `storage/` folder in the deployed directory. Uploads accept JPEG, PNG, GIF, and WebP files up to 12 MB and use generated filenames.
+Configure the SSH destination once:
 
-### Asset locations
+```sh
+cp .env.example .env
+# Edit .env and set DEPLOY_TARGET='user@host:directory'
+```
 
-- `assets/`: framework CSS, JavaScript, logo, feed icons, fallback images, and favicon files.
-- `content/`: content media, with `pool/` for item images/uploads, `img/` for inline and page images, `supersize/` for large legacy images, and `70faces-cover.gif`.
-
-Use `/assets/` and `/content/` URLs directly; redirects from the former asset locations have been removed. Keep `content/.htaccess` to prevent script execution throughout the media tree.
-
-RSS endpoints are rendered dynamically at `/rss.xml`, `/rss-blog.xml`, `/rss-photos.xml`, and `/rss-geek.xml`. Sitemap endpoints are `/sitemap.xml` and `/sitemap.txt`.
-
-### Development and code deployment
+Then run:
 
 ```sh
 ./dev.sh
 ```
 
-Before starting PHP, `dev.sh` downloads a consistent production SQLite snapshot and synchronizes new/changed content files using the same `DEPLOY_TARGET` setting as deployment. **Production is the source of truth: local database edits and accounts are replaced.** A timestamped `storage/before-dev-sync-*.sqlite` backup preserves the previous local database; these private backups are Git-ignored and never deployed. Content files are updated without deleting local-only media or replacing local protection files. Failed downloads, integrity checks, or media syncs abort startup before replacing the local database.
+**Each startup pulls the production database and new or changed content files before starting the server. Production replaces local content edits and accounts.** The previous local database is backed up as `storage/before-dev-sync-*.sqlite`. Local-only media is not deleted. These database files are private and Git-ignored.
 
-The remote snapshot uses PHP PDO SQLite's `VACUUM INTO`, so it includes committed WAL data without copying a live database file unsafely. Only a temporary snapshot is created on the server and removed afterward; the live database is never replaced. SSH/rsync and remote command-line PHP with PDO SQLite are required; local PHP also needs the SQLite3 extension. The sync checks `php` and versioned `php8.4-cli` through `php8.1-cli` executables, skipping CGI binaries (IONOS may make `php` a CGI executable that rejects `-r`). Set `REMOTE_PHP='/usr/bin/php8.3-cli'` in `.env` to select an explicit executable instead; it must report the CLI SAPI. If none is available, startup fails with a configuration message before replacing local data.
+The server runs at `http://127.0.0.1:8080`; override `HOST` or `PORT` if needed. If remote PHP detection fails, set `REMOTE_PHP` in `.env` to the server's CLI executable, for example `/usr/bin/php8.3-cli`.
 
-After sync, opens the development server at `http://127.0.0.1:8080`; stop it with Ctrl+C. Stop any existing local dev servers before running this command (an occupied configured port aborts before sync). Override the address with `HOST` and `PORT`, for example `PORT=8081 ./dev.sh`. The script works from any working directory. Sync does not upload code, local database edits, or media to production.
+To run locally **without** pulling production data:
 
 ```sh
-cp .env.example .env
-# Set DEPLOY_TARGET in .env to your SSH destination.
+php -S 127.0.0.1:8080 -t . bin/dev-router.php
+```
+
+Keep `.env` local and trusted: it is sourced as shell configuration and is excluded from Git and deployment. An environment-provided `DEPLOY_TARGET` overrides the file.
+
+## Deploying updates
+
+Using the same `.env` configuration:
+
+```sh
 ./deploy.sh --dry-run
 ./deploy.sh
 ```
 
-Deployment uses rsync over SSH to `DEPLOY_TARGET` from the project's local `.env`, for example `DEPLOY_TARGET='user@host:directory'`. An environment variable overrides the file, e.g. `DEPLOY_TARGET=user@host:directory ./deploy.sh --dry-run`. A missing or empty target is an error. The `.env` file is sourced as trusted Bash configuration, so keep it local and do not load untrusted files. It is ignored by Git and excluded from deployment; `.env.example` contains only a placeholder.
+The deployment script previews changes and asks for confirmation before uploading application code, templates, assets, and protection files.
 
-The script shows a dry run and requires confirmation before uploading. It deploys application code, framework assets, access-protection files, and the initialization and admin-account CLIs. Local environment files, development scripts, and documentation are not uploaded.
+**It never uploads the database or content media, and never deletes remote files.** Live content and accounts are preserved. Transfer media separately when needed; do not overwrite the live database with a local development copy. Removed code files must be reviewed and cleaned up separately.
 
-**Code deployment never uploads SQLite files, storage data, or content media, and never deletes remote files.** Only protection files are uploaded within `content/`. Production content, accounts, and uploaded images are preserved. The app creates missing tables and indexes but no longer upgrades old table layouts. Removed code files (including old import/migration tools) must be cleaned up separately on previously deployed servers after review.
+Back up both `storage/dbnet.sqlite` and `content/` regularly. Use a consistent SQLite backup rather than copying an active database file.
 
-For the first deployment only, transfer the populated database as a consistent SQLite backup and copy `content/` separately, including hidden protection files. Content media changes must also be transferred separately in subsequent deployments. This is intentionally not automated by `deploy.sh`. Subsequent code deployments must not replace the live database with the local copy. SSH access and rsync on both machines are required.
+## Customization
 
-## Local checks
+- `app/Types.php`: item types, extra fields, and available views. The editor uses these definitions automatically.
+- `templates/`: site layouts, admin forms, and independent Article, Photo, and Project templates.
+- `assets/`: site styles, scripts, and framework images.
+- `content/`: uploaded and authored media.
 
-```sh
-php -l index.php
-php -l app/Database.php
-php -l app/Content.php
-php -l app/Types.php
-php -l bin/create-admin.php
-php -l bin/initialize.php
-php -l bin/dev-router.php
-php -S 127.0.0.1:8080 -t . bin/dev-router.php
-```
+To add a view, create its template and register it for each item type the list can contain. Keep a `detail` view for full item pages. Escape plain template values with `Content::escape()` or `h()`; emit only already-rendered HTML directly.
+
+RSS feeds are available at `/rss.xml`, `/rss-blog.xml`, `/rss-photos.xml`, and `/rss-geek.xml`. Sitemaps are at `/sitemap.xml` and `/sitemap.txt`.
