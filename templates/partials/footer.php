@@ -9,7 +9,7 @@
     </p>
     <hr>
     <p>Text and photos containing people © <?= date('Y') ?> Daniel Beck. Other photos CC BY-NC-SA 4.0.</p>
-    <?php if ($isAdmin): ?><p><a href="/admin/">Manage site</a></p><?php else: ?><p><a href="/admin/login">Admin</a></p><?php endif; ?>
+    <?= Template::render('partials/auth', ['isAdmin' => $isAdmin, 'currentUrl' => $currentUrl]) ?>
     </div>
     <p class="site-logo"><img src="/assets/db.svg" alt="Daniel Beck logo"></p>
 </footer>

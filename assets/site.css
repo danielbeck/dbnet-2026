@@ -583,17 +583,26 @@ button,
 
 .auth-controls {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
   align-items: center;
   gap: .75rem;
-  padding: .3rem 1rem;
-  font: 14px Asap, sans-serif;
-  position: absolute;
-  right: 0;
+  margin: 1em 0;
 }
 
 .auth-controls form {
   margin: 0;
+}
+
+.auth-controls button {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: #314f67;
+  text-decoration: underline;
+}
+
+.auth-controls button:hover {
+  color: #922b19;
 }
 
 #pool-dialog {

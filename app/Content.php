@@ -192,7 +192,7 @@ final class Content
             '/<highlightjs\b([^>]*)>(.*?)<\/highlightjs\s*>/is',
             static function (array $match): string {
                 $attrs = self::parseAttributes($match[1]);
-                $language = strtolower((string)($attrs['language'] ?? $attrs['lang'] ?? 'text'));
+                $language = strtolower((string)($attrs['language'] ?? $attrs['lang'] ?? 'auto'));
                 if (!preg_match('/^[a-z0-9_+#.-]{1,30}$/', $language)) {
                     $language = 'text';
                 }
@@ -312,6 +312,22 @@ final class Content
     public static function escape(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    public static function titleHtml(string $title): string
+    {
+        $parts = preg_split('~(<[^>]*>)~', strip_tags($title, '<em><strong><b><i><s><strike><del><sub><sup><code><br>'), -1, PREG_SPLIT_DELIM_CAPTURE);
+        return implode('', array_map(static function (string $part): string {
+            if (preg_match('~^<(/?)(em|strong|b|i|s|strike|del|sub|sup|code|br)\b[^>]*>$~i', $part, $match)) {
+                return '<' . $match[1] . strtolower($match[2]) . '>';
+            }
+            return self::escape(html_entity_decode($part, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }, $parts));
+    }
+
+    public static function titleText(string $title): string
+    {
+        return html_entity_decode(strip_tags($title), ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     private static function parseAttributes(string $input): array

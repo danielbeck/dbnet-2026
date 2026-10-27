@@ -88,9 +88,11 @@ Escape plain values with `Content::escape()` (or `h()` in site/admin templates).
 
 Available types are Article (no extra fields), Photo (camera metadata), and Project (optional URL and GithubURL fields). Project URLs are stored with the item's fields and displayed with its metadata. Choosing Project does not automatically add the `project` tag; tags still control page listing.
 
+Pool-item titles support inline formatting (`em`, `strong`, `b`, `i`, `s`, `strike`, `del`, `sub`, `sup`, `code`, `br`) in headings, lists, and grid captions. Attributes and other tags are removed. Browser-tab titles, image alt text, accessible link names, and RSS titles use plain text; editors retain the original markup.
+
 ### Pool authoring
 
-Use **Admin** at the top right to sign in and return to the page you were browsing. Signed-in visitors see **Edit page** and **Add pool item** on pages and **Edit pool item** on individual items. These open in-page modals; Cancel or Escape dismisses them and discards unsaved edits. Page editing uses the same fields as the standalone editor; saving returns to the page's updated URL and deleting returns to its parent (or Home). **Manage pages/site** remains available for adding pages and managing the hierarchy. Both editors have standalone links as a no-JavaScript fallback.
+Use **Admin** in the footer to sign in and return to the page you were browsing. When signed in, **Manage site** and **Log out** appear together there. Signed-in visitors see **Edit page** and **Add pool item** on pages and **Edit pool item** on individual items. These open in-page modals; Cancel or Escape dismisses them and discards unsaved edits. Page editing uses the same fields as the standalone editor; saving returns to the page's updated URL and deleting returns to its parent (or Home). **Manage site** remains available for adding pages and managing the hierarchy. Both editors have standalone links as a no-JavaScript fallback.
 
 New items default to Markdown and inherit the current page and ancestor tags. The editor offers title-to-slug generation until the slug is edited manually, separate tag fields with existing-tag suggestions, image and thumbnail-size previews, and a **Fix HTML** action that normalizes markup using the browser's HTML parser. Smart quotes are applied on save without changing HTML attributes or code blocks. Fields for the selected item type appear directly below the type selector, before Format and Body. Save returns to the saved item, preserving list query context where applicable; Delete returns to its containing page. The thumbnail preview shows a cropped view, not a separately generated thumbnail file.
 
@@ -108,6 +110,8 @@ flowchart LR
 ````
 
 Mermaid 12.2.0 is self-hosted under `assets/vendor/mermaid/` with its MIT license; no CDN or external rendering service is used. `assets/diagrams.js` loads the bundle only when a diagram is present and renders in strict security mode. HTML content can also use `<pre class="mermaid">...</pre>` (HTML-escape the diagram source), `<pre><code class="language-mermaid">...</code></pre>`, or `<highlightjs language="mermaid">...</highlightjs>`. Without JavaScript the source remains readable; load/syntax failures display an error and preserve the source. Other fenced languages render as escaped code, not executable HTML. To update Mermaid, replace the vendored bundle and license together from an official release and recheck diagrams.
+
+Code syntax coloring uses self-hosted highlight.js 11.11.1 with the original GitHub light theme. `assets/syntax.js` loads its bundle and stylesheet from `assets/vendor/highlight/` only on pages with code blocks. Fenced blocks with a language and `<highlightjs language="...">` / `<highlightjs lang="...">` blocks get syntax coloring. A `<highlightjs>` block without a language auto-detects among the original site's languages; unlabelled fences and explicit `text` blocks stay plain. Unsupported languages remain readable and log a warning. Without JavaScript, escaped source is still visible. The bundle includes all highlight.js languages and its BSD license; it was built from the official package's `lib/index.js` using esbuild (`--bundle --minify --format=iife --global-name=hljs`).
 
 Special content tags:
 

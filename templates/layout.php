@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= h($pageTitle) ?> | Danielbeck.net</title>
+    <title><?= h(Content::titleText($pageTitle)) ?> | Danielbeck.net</title>
     <link rel="icon" href="/assets/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon/favicon-32x32.png">
     <link rel="apple-touch-icon" href="/assets/favicon/apple-touch-icon.png">
@@ -13,14 +13,14 @@
     <?php if ($canonicalUrl !== null): ?><link rel="canonical" href="<?= h($canonicalUrl) ?>"><?php endif; ?>
 </head>
 <body>
-<?= Template::render('partials/auth', ['isAdmin' => $isAdmin, 'currentUrl' => $currentUrl]) ?>
 <?= $navigation ?>
 <div class="site-wrap" id="main"><?= $content ?></div>
 <?= $dialogs ?>
 <script src="/assets/pool-navigation.js" defer></script>
 <script src="/assets/footnotes.js" defer></script>
 <script src="/assets/diagrams.js" defer></script>
+<script src="/assets/syntax.js" defer></script>
 <?php if ($isAdmin): ?><script src="/assets/pool-editor.js" defer></script><?php endif; ?>
-<?= Template::render('partials/footer', ['isAdmin' => $isAdmin]) ?>
+<?= Template::render('partials/footer', ['isAdmin' => $isAdmin, 'currentUrl' => $currentUrl]) ?>
 </body>
 </html>

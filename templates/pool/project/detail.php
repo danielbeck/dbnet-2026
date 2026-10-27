@@ -1,9 +1,9 @@
 <main class="pool-item">
-    <h1><?= Content::escape($item['title']) ?></h1>
+    <h1><?= Content::titleHtml($item['title']) ?></h1>
     <p class="date"><?= Content::escape($date) ?></p>
     <?= Template::render('pool/navigation', ['previousUrl' => $previousUrl, 'nextUrl' => $nextUrl]) ?>
     <?php if ($body !== ''): ?><div class="content-body"><?= $body ?></div><?php endif; ?>
-    <?php if ($image !== ''): ?><figure class="pageimage"><img src="<?= Content::escape($image) ?>" alt="<?= Content::escape($item['title']) ?>"></figure><?php endif; ?>
+    <?php if ($image !== ''): ?><figure class="pageimage"><img src="<?= Content::escape($image) ?>" alt="<?= Content::escape(Content::titleText($item['title'])) ?>"></figure><?php endif; ?>
     <?php if ($item['fields']): ?>
         <dl class="item-fields">
             <?php foreach ($fields as $name => $definition): if (($item['fields'][$name] ?? '') === '') continue; ?>

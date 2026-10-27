@@ -6,7 +6,7 @@
         <description>Daniel Beck’s site</description>
         <?php foreach ($entries as $entry): ?>
             <item>
-                <title><?= Content::escape($entry['item']['title']) ?></title>
+                <title><?= Content::escape(Content::titleText($entry['item']['title'])) ?></title>
                 <link><?= Content::escape($entry['url']) ?></link>
                 <guid><?= Content::escape($entry['url']) ?></guid>
                 <pubDate><?= Content::escape($entry['date']) ?></pubDate>
