@@ -17,6 +17,7 @@
 <div class="site-wrap" id="main"><?= $content ?></div>
 <?= $dialogs ?>
 <script src="/assets/pool-navigation.js" defer></script>
+<script src="/assets/header-parallax.js" defer></script>
 <script src="/assets/footnotes.js" defer></script>
 <script src="/assets/diagrams.js" defer></script>
 <script src="/assets/syntax.js" defer></script>
