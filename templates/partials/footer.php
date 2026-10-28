@@ -1,3 +1,4 @@
+<div class="footer-stage">
 <footer class="site-footer">
     <div class="fineprint">
     <p class="feed-links">
@@ -13,3 +14,4 @@
     </div>
     <p class="site-logo"><img src="/assets/db.svg" alt="Daniel Beck logo"></p>
 </footer>
+</div>

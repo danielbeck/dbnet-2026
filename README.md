@@ -30,8 +30,6 @@ A server-rendered PHP site with SQLite storage and a live admin interface for ma
 
 The database is stored at `storage/dbnet.sqlite`. To install an existing site, transfer a consistent SQLite backup and its `content/` directory instead of initializing an empty site. Keep all access-protection files in place, and verify that the host blocks web access to `storage/` before uploading private data.
 
-On IONOS, use a PHP **CLI** executable for command-line tasks; the default `php` may be a CGI executable. If the home page works but other routes return HTTP 500, confirm the root `.htaccess` was uploaded and check the Apache error log.
-
 ## Managing content
 
 Use **Admin** in the footer to sign in. Once signed in:
@@ -50,7 +48,7 @@ Items can appear beneath any page with a matching tag filter, and every item has
 
 ### Writing content
 
-Bodies support HTML or a small Markdown subset, including headings, lists, links, emphasis, inline HTML, and fenced code blocks. Only trusted administrators should author HTML. Add a language to a code fence for syntax highlighting, or use `mermaid` for diagrams.
+Bodies support HTML or a small Markdown subset, including headings, lists, links, emphasis, inline HTML, and fenced code blocks.  Add a language to a code fence for syntax highlighting, or use `mermaid` for diagrams.
 
 Special tags work in page and item bodies:
 
@@ -121,6 +119,10 @@ Back up both `storage/dbnet.sqlite` and `content/` regularly. Use a consistent S
 - `assets/`: site styles, scripts, and framework images.
 - `content/`: uploaded and authored media.
 
+Scroll effects live in `assets/header-parallax.js`: the header exits slowly, while the footer and logo enter in faster, staggered layers. Reduced-motion preferences disable these effects.
+
 To add a view, create its template and register it for each item type the list can contain. Keep a `detail` view for full item pages. Escape plain template values with `Content::escape()` or `h()`; emit only already-rendered HTML directly.
+
+Projects also offer a card grid: `<pool-list tag="project" type="grid"></pool-list>`. Creating a template file alone does not enable a view; add its name and template path to that item's `templates` map in `app/Types.php`.
 
 RSS feeds are available at `/rss.xml`, `/rss-blog.xml`, `/rss-photos.xml`, and `/rss-geek.xml`. Sitemaps are at `/sitemap.xml` and `/sitemap.txt`.

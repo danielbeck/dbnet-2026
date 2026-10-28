@@ -28,6 +28,7 @@ final class Types
                 'github_url' => ['label' => 'GithubURL', 'type' => 'url'],
             ], 'templates' => [
                 'detail' => 'pool/project/detail',
+                'grid' => 'pool/project/grid',
                 'list' => 'pool/project/list',
                 'summary' => 'pool/project/summary',
                 'image' => 'pool/project/image',
