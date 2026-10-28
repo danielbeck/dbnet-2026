@@ -9,7 +9,7 @@
         <a href="/rss-geek.xml"><img src="/assets/rss_geek.gif" alt="Tech RSS feed"></a>
     </p>
     <hr>
-    <p>Text and photos containing people © <?= date('Y') ?> Daniel Beck. Other photos CC BY-NC-SA 4.0.</p>
+    <p>Text and photos containing people © 1996 - <?= date('Y') ?> Daniel Beck. Other photos CC BY-NC-SA 4.0.</p>
     <?= Template::render('partials/auth', ['isAdmin' => $isAdmin, 'currentUrl' => $currentUrl]) ?>
     </div>
     <p class="site-logo"><img src="/assets/db.svg" alt="Daniel Beck logo"></p>

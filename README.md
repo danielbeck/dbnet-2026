@@ -35,7 +35,7 @@ The database is stored at `storage/dbnet.sqlite`. To install an existing site, t
 Use **Admin** in the footer to sign in. Once signed in:
 
 - **Manage site** opens the dashboard for adding pages and arranging the hierarchy.
-- **Edit page**, **Add pool item**, and **Edit pool item** open editors on the page you are viewing.
+- **Edit page**, **Add pool item**, and **Edit pool item** appear in a compact link row above the content and open editors on the page you are viewing.
 - **Log out** ends the session.
 
 ### Pages and pool items

@@ -586,14 +586,15 @@ $poolEditor = '';
 $pageEditor = '';
 $currentUrl = PoolEditor::returnPath((string)($_SERVER['REQUEST_URI'] ?? '/'));
 if (isAdmin() && !$isAdminRoute && ($page || $poolRoute)) {
+    $authorControls = '';
     if ($page) {
         $pageEditor = Template::render('admin/dialog', [
             'id' => 'page-dialog', 'headingId' => 'page-editor-heading', 'label' => 'Edit page',
             'form' => PageEditor::render($db, $page, $currentUrl),
         ]);
-        $content = Template::render('admin/author-control', [
+        $authorControls = Template::render('admin/author-control', [
             'kind' => 'page', 'url' => '/admin/page?id=' . rawurlencode($page['id']), 'label' => 'Edit page',
-        ]) . $content;
+        ]);
     }
     $editorItem = $poolRoute['item'] ?? null;
     $editorContext = $poolRoute['context'] ?? $page;
@@ -602,7 +603,8 @@ if (isAdmin() && !$isAdminRoute && ($page || $poolRoute)) {
         'id' => $editorItem['id'] ?? '', 'context_page' => $editorContext['id'] ?? '',
         'return_to' => $currentUrl,
     ]);
-    $content = Template::render('admin/author-control', ['kind' => 'pool', 'url' => $editorUrl, 'label' => $editorLabel]) . $content;
+    $authorControls = Template::render('admin/author-control', ['kind' => 'pool', 'url' => $editorUrl, 'label' => $editorLabel]) . $authorControls;
+    $content = '<nav class="author-controls" aria-label="Content editing">' . $authorControls . '</nav>' . $content;
     $poolEditor = Template::render('admin/dialog', [
         'id' => 'pool-dialog', 'headingId' => 'pool-editor-heading', 'label' => $editorLabel,
         'form' => PoolEditor::render($db, $editorItem, $editorContext, $currentUrl),

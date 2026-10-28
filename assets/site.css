@@ -558,6 +558,33 @@ h1 {
   opacity: .2;
 }
 
+.author-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: .25rem 1rem;
+  margin: 0 0 .75rem;
+  font: 14px/1.4 Asap, sans-serif;
+}
+
+.author-controls a {
+  padding: .2rem 0;
+  text-decoration: underline;
+  text-decoration-color: #314f6755;
+  text-underline-offset: .2em;
+}
+
+.author-controls a:hover {
+  text-decoration-color: currentColor;
+}
+
+.author-controls a:focus-visible {
+  outline: 2px solid #314f67;
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
 .admin-card {
   width: min(100% - 2rem, 620px);
   margin: 3rem auto;
