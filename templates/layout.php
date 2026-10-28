@@ -1,3 +1,9 @@
+<?php
+$stylesheetVersion = hash_file('sha256', dirname(__DIR__) . '/assets/site.css');
+if ($stylesheetVersion === false) {
+    throw new RuntimeException('Unable to version site stylesheet.');
+}
+?>
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,7 +15,7 @@
     <link rel="apple-touch-icon" href="/assets/favicon/apple-touch-icon.png">
     <link rel="manifest" href="/assets/favicon/site.webmanifest">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Asap:400,700,400italic,700italic|Alegreya+Sans:400,700">
-    <link rel="stylesheet" href="/assets/site.css">
+    <link rel="stylesheet" href="/assets/site.css?v=<?= h($stylesheetVersion) ?>">
     <?php if ($canonicalUrl !== null): ?><link rel="canonical" href="<?= h($canonicalUrl) ?>"><?php endif; ?>
 </head>
 <body>
