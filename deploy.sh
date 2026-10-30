@@ -33,6 +33,7 @@ OPTIONS=(
     --exclude='*.db-*'
     --include='/.htaccess'
     --include='/index.php'
+    --include='/robots.txt'
     --include='/app/***'
     --include='/templates/***'
     --include='/assets/***'

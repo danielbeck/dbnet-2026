@@ -5,6 +5,7 @@ A server-rendered PHP site with SQLite storage and a live admin interface for ma
 ## Requirements
 
 - PHP 8.1+ with PDO SQLite (`pdo_sqlite`)
+- PHP cURL (`curl`) for the optional `/embed/` reverse proxy
 - Apache 2.4 with `mod_rewrite`, `mod_authz_core`, and `.htaccess` overrides enabled
 - Writable `storage/` and `content/pool/` directories
 - For development sync and deployment: SSH and rsync on both machines, remote PHP CLI with PDO SQLite, and local PHP with the SQLite3 extension
@@ -31,6 +32,38 @@ A server-rendered PHP site with SQLite storage and a live admin interface for ma
 The database is stored at `storage/dbnet.sqlite`. To install an existing site, transfer a consistent SQLite backup and its `content/` directory instead of initializing an empty site. Keep all access-protection files in place, and verify that the host blocks web access to `storage/` before uploading private data.
 
 ## Managing content
+
+### Embedding HTTP projects on HTTPS pages
+
+The `/embed/poi/` route proxies `http://nosebeep.com/poi/` through this site's
+HTTPS origin. Use it in content like this:
+
+```html
+<iframe src="/embed/poi/?model=mathematical&poi-speed=2"
+        title="Poi simulator" width="800" height="600"></iframe>
+```
+
+Add trusted child sites to `EmbedProxy::DESTINATIONS` in
+`app/EmbedProxy.php`, with a short route key and a base URL ending in `/`.
+Each key creates `/embed/KEY/`. Deploy normally; no Apache proxy module is
+required. Query parameters and relative asset paths are preserved.
+
+This is not an arbitrary-URL proxy. Only configured destinations are fetched,
+using GET/HEAD without forwarded browser cookies, credentials, or upstream
+cookies. Redirects are rejected (configure the final URL), requests time out
+after 15 seconds, and responses are limited to 8 MB and supported web content
+types. Failures return 502 and are recorded in PHP's error log.
+
+Proxied content is sandboxed without same-origin privileges to isolate it
+from the site's login and administration. CORS allows its JavaScript modules
+to load. Popups inherit the sandbox. Projects needing cookies, forms,
+same-origin storage, or absolute upstream URLs may require adaptation; this
+is not a transparent proxy for arbitrary websites. The upstream HTTP leg
+remains unencrypted; HTTPS on the child is still preferable when available.
+
+Run proxy routing checks with `php bin/test-embed-proxy.php`.
+
+### Editing the site
 
 Use **Admin** in the footer to sign in. Once signed in:
 
@@ -107,6 +140,8 @@ Using the same `.env` configuration:
 ```
 
 The deployment script previews changes and asks for confirmation before uploading application code, templates, assets, and protection files.
+
+The root `robots.txt` is served as a static file and included in deployments. Edit it directly to update crawler rules; no build step is required.
 
 **It never uploads the database or content media, and never deletes remote files.** Live content and accounts are preserved. Transfer media separately when needed; do not overwrite the live database with a local development copy. Removed code files must be reviewed and cleaned up separately.
 

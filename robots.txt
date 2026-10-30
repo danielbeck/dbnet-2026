@@ -1,0 +1,14 @@
+User-agent: *
+Crawl-delay: 5
+Disallow: /embed/
+Disallow: /poi/?
+Disallow: /*/null$
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: Sogou web spider
+Disallow: /
+
+User-agent: ElevenlabsCrawler
+Disallow: /

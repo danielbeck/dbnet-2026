@@ -1,6 +1,13 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/app/EmbedProxy.php';
+EmbedProxy::handle(
+    rawurldecode((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/')),
+    (string)($_SERVER['QUERY_STRING'] ?? ''),
+    strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET')
+);
+
 require_once __DIR__ . '/app/Database.php';
 require_once __DIR__ . '/app/Types.php';
 require_once __DIR__ . '/app/Content.php';
