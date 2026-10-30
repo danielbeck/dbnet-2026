@@ -4,7 +4,8 @@ A server-rendered PHP site with SQLite storage and a live admin interface for ma
 
 ## Requirements
 
-- PHP 8.1+ with PDO SQLite (`pdo_sqlite`)
+- PHP 8.1+ with PDO SQLite (`pdo_sqlite`) and mbstring
+- Composer 2 for installing PHP dependencies
 - PHP cURL (`curl`) for the optional `/embed/` reverse proxy
 - Apache 2.4 with `mod_rewrite`, `mod_authz_core`, and `.htaccess` overrides enabled
 - Writable `storage/` and `content/pool/` directories
@@ -13,14 +14,20 @@ A server-rendered PHP site with SQLite storage and a live admin interface for ma
 ## Installation
 
 1. Copy the application to the domain's webroot, including all hidden `.htaccess` files. Hosting at the domain root is required.
-2. Ensure PHP can write to `storage/` and `content/pool/`.
-3. For a fresh site, initialize the required Home and Archive pages:
+2. Install PHP dependencies:
+
+   ```sh
+   composer install --no-dev
+   ```
+
+3. Ensure PHP can write to `storage/` and `content/pool/`.
+4. For a fresh site, initialize the required Home and Archive pages:
 
    ```sh
    php bin/initialize.php
    ```
 
-4. Create an administrator:
+5. Create an administrator:
 
    ```sh
    php bin/create-admin.php YOUR_USERNAME
@@ -81,7 +88,7 @@ Items can appear beneath any page with a matching tag filter, and every item has
 
 ### Writing content
 
-Bodies support HTML or a small Markdown subset, including headings, lists, links, emphasis, inline HTML, and fenced code blocks.  Add a language to a code fence for syntax highlighting, or use `mermaid` for diagrams.
+Bodies support HTML or GitHub Flavored Markdown, including tables, task lists, headings, lists, links, emphasis, inline HTML, and fenced code blocks. Add a language to a code fence for syntax highlighting, or use `mermaid` for diagrams. Install dependencies with Composer before deploying; the deployment script uploads the installed packages.
 
 Special tags work in page and item bodies:
 

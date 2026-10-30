@@ -1,8 +1,11 @@
 <?php
 declare(strict_types=1);
 
+use League\CommonMark\GithubFlavoredMarkdownConverter;
+
 require_once __DIR__ . '/Template.php';
 require_once __DIR__ . '/Types.php';
+require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 final class Content
 {
@@ -362,76 +365,11 @@ final class Content
 
     private static function markdown(string $source): string
     {
-        $source = str_replace(["\r\n", "\r"], "\n", $source);
-        $lines = explode("\n", $source);
-        $html = [];
-        $paragraph = [];
-        $list = false;
-        $flushParagraph = static function () use (&$paragraph, &$html): void {
-            if ($paragraph) {
-                $html[] = '<p>' . self::inlineMarkdown(implode(' ', $paragraph)) . '</p>';
-                $paragraph = [];
-            }
-        };
-        foreach ($lines as $line) {
-            if (preg_match('/^\s*[-*]\s+(.+)$/', $line, $match)) {
-                $flushParagraph();
-                if (!$list) {
-                    $html[] = '<ul>';
-                    $list = true;
-                }
-                $html[] = '<li>' . self::inlineMarkdown($match[1]) . '</li>';
-                continue;
-            }
-            if ($list) {
-                $html[] = '</ul>';
-                $list = false;
-            }
-            if (preg_match('/^(#{1,6})\s+(.+)$/', $line, $match)) {
-                $flushParagraph();
-                $level = strlen($match[1]);
-                $html[] = '<h' . $level . '>' . self::inlineMarkdown($match[2]) . '</h' . $level . '>';
-            } elseif (trim($line) === '') {
-                $flushParagraph();
-            } else {
-                $paragraph[] = trim($line);
-            }
-        }
-        $flushParagraph();
-        if ($list) {
-            $html[] = '</ul>';
-        }
-        return implode("\n", $html);
-    }
-
-    private static function inlineMarkdown(string $text): string
-    {
-        $tokens = [];
-        $prefix = 'DBNETINLINETOKEN';
-        while (str_contains($text, $prefix)) {
-            $prefix .= 'X';
-        }
-        $text = preg_replace_callback(
-            '~`([^`]+)`|<!--.*?-->|</?[a-zA-Z][a-zA-Z0-9:-]*\b(?:[^<>"\']|"[^"]*"|\'[^\']*\')*>~',
-            static function (array $match) use (&$tokens, $prefix): string {
-                $token = $prefix . count($tokens) . 'END';
-                $tokens[$token] = $match[0][0] === '`'
-                    ? '<code>' . self::escape($match[1]) . '</code>'
-                    : $match[0];
-                return $token;
-            },
-            $text
-        ) ?? $text;
-        $text = self::escape($text);
-        $text = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $text) ?? $text;
-        $text = preg_replace('/\*(.+?)\*/', '<em>$1</em>', $text) ?? $text;
-        $text = preg_replace_callback('/\[([^\]]+)\]\(([^)]+)\)/', static function (array $match): string {
-            $url = html_entity_decode($match[2], ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            if (!preg_match('~^(https?://|/|#)~i', $url) || str_starts_with($url, '//')) {
-                return $match[1];
-            }
-            return '<a href="' . self::escape($url) . '">' . $match[1] . '</a>';
-        }, $text) ?? $text;
-        return strtr($text, $tokens);
+        static $converter;
+        $converter ??= new GithubFlavoredMarkdownConverter([
+            'html_input' => 'allow',
+            'allow_unsafe_links' => false,
+        ]);
+        return $converter->convert($source)->getContent();
     }
 }

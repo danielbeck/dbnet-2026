@@ -26,6 +26,10 @@ for tool in rsync ssh; do
 done
 
 cd "$ROOT"
+if [[ ! -f "$ROOT/vendor/autoload.php" ]]; then
+    echo "Install PHP dependencies with composer install before deployment." >&2
+    exit 1
+fi
 OPTIONS=(
     -rltz --itemize-changes -e ssh
     --exclude='*.sqlite*'
@@ -35,6 +39,7 @@ OPTIONS=(
     --include='/index.php'
     --include='/robots.txt'
     --include='/app/***'
+    --include='/vendor/***'
     --include='/templates/***'
     --include='/assets/***'
     --include='/storage/'
