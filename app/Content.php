@@ -288,7 +288,7 @@ final class Content
             $date = $item['date'] ? date('F j, Y', (int)floor((int)$item['date'] / 1000)) : '';
             $image = self::imageUrl($item['image']);
             $thumbnail = preg_replace('/_image(\.[a-z0-9]+)$/i', '_thumbnail$1', $image) ?: $image;
-            $summary = self::truncate(strip_tags($item['body']), 150);
+            $summary = self::summary((string)$item['body'], (string)$item['format'], 150);
             $html .= Template::render(Types::template($item['item_type'], $type), [
                 'item' => $item, 'href' => $href, 'date' => $date, 'image' => $image,
                 'thumbnail' => $thumbnail, 'summary' => $summary, 'view' => $type,
@@ -361,6 +361,33 @@ final class Content
             return $text;
         }
         return rtrim(mb_substr($text, 0, $length)) . '…';
+    }
+
+    private static function summary(string $body, string $format, int $length): string
+    {
+        $html = $format === 'markdown' ? self::markdown($body) : $body;
+        if (preg_match_all('~<p\b[^>]*>(.*?)</p\s*>~is', $html, $paragraphs)) {
+            foreach ($paragraphs[1] as $paragraph) {
+                $text = html_entity_decode(strip_tags($paragraph), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                if (trim($text) !== '') {
+                    return self::truncate($text, $length);
+                }
+            }
+            return '';
+        }
+        if ($format === 'markdown') {
+            return '';
+        }
+
+        $body = preg_replace(
+            '~<(table|pre|ul|ol|dl|figure|iframe|script|style|svg)\b[^>]*>.*?</\1\s*>~is',
+            ' ',
+            $body
+        ) ?? $body;
+        return self::truncate(
+            html_entity_decode(strip_tags($body), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            $length
+        );
     }
 
     private static function markdown(string $source): string
