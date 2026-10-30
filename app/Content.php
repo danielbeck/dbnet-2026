@@ -175,9 +175,9 @@ final class Content
         $notes = [];
         $body = preg_replace_callback(
             '/<footnote\b[^>]*>(.*?)<\/footnote\s*>/is',
-            static function (array $match) use (&$notes, $footnotePrefix): string {
+            static function (array $match) use (&$notes, $footnotePrefix, $format): string {
                 $number = count($notes) + 1;
-                $notes[$number] = $match[1];
+                $notes[$number] = $format === 'markdown' ? self::markdown($match[1]) : $match[1];
                 return rtrim(Template::render('content/footnote-reference', ['number' => $number, 'prefix' => $footnotePrefix]));
             },
             $body

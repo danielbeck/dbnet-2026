@@ -125,6 +125,30 @@ h1 {
   line-height: 1.3;
 }
 
+.content-body table {
+  width: 100%;
+  margin: 1.5rem 0;
+  border-collapse: collapse;
+}
+
+.content-body th,
+.content-body td {
+  padding: .55em .75em;
+  border: 1px solid #d8d0c6;
+  text-align: left;
+  vertical-align: top;
+}
+
+.content-body th {
+  background: #f8f5ef;
+  border-bottom: 2px solid #b8aa9a;
+  font-weight: 700;
+}
+
+.content-body [align="right"] {
+  text-align: right;
+}
+
 .content-body img,
 .pageimage img {
   max-width: 100%;
