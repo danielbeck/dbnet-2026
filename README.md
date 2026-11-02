@@ -151,6 +151,8 @@ Using the same `.env` configuration:
 
 The deployment script previews changes and asks for confirmation before uploading application code, templates, assets, and protection files.
 
+The layout versions its stylesheet and scripts using content hashes, so changed assets get new URLs after deployment without requiring visitors to clear their browser cache.
+
 The root `robots.txt` is served as a static file and included in deployments. Edit it directly to update crawler rules; no build step is required.
 
 **It never uploads the database or content media, and never deletes remote files.** Live content and accounts are preserved. Transfer media separately when needed; do not overwrite the live database with a local development copy. Removed code files must be reviewed and cleaned up separately.
