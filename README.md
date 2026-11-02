@@ -82,6 +82,9 @@ Use **Admin** in the footer to sign in. Once signed in:
 
 **Pages** define the site's URL hierarchy and navigation. Each page has a parent, URL segment, body, and optional tag filter. Changing a parent changes descendant URLs, so check existing links after rearranging pages.
 
+Navigation rows scroll horizontally when they do not fit, keeping the active tab visible on load and resize.
+On screens up to 620px wide, new page loads start at the content heading; scroll up to reach navigation. Fragment links and browser history retain their scroll positions. Header parallax is disabled at this size; footer animations are unchanged.
+
 **Pool items** are reusable content records: Articles, Photos, or Projects. Projects have additional project and GitHub URL fields. Tags determine which pages list an item; a tag is not an item type.
 
 Items can appear beneath any page with a matching tag filter, and every item has a canonical URL under `/archive/`. Archive includes all items. Previous/next links, arrow keys, and swipe navigation follow the list in which the item was opened.

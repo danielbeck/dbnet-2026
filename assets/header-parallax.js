@@ -6,12 +6,13 @@
     if (!header && !footer) return;
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const smallScreen = window.matchMedia('(max-width: 620px)');
     let frame = null;
 
     const update = () => {
         frame = null;
         const scroll = Math.max(0, window.scrollY);
-        if (header) {
+        if (header && !smallScreen.matches) {
             const offset = Math.min(scroll, header.offsetHeight / 0.6) * 0.4;
             header.style.translate = `0 ${offset}px`;
         }
@@ -34,6 +35,7 @@
         window.removeEventListener('resize', schedule);
         if (frame !== null) window.cancelAnimationFrame(frame);
         frame = null;
+        if (smallScreen.matches) header?.style.removeProperty('translate');
         if (reducedMotion.matches) {
             for (const element of [header, footer, logo]) {
                 element?.style.removeProperty('translate');
@@ -46,6 +48,7 @@
     };
 
     reducedMotion.addEventListener('change', configure);
+    smallScreen.addEventListener('change', configure);
     if (typeof ResizeObserver !== 'undefined') {
         const observer = new ResizeObserver(() => {
             if (!reducedMotion.matches) schedule();

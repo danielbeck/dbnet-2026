@@ -22,6 +22,7 @@ if ($stylesheetVersion === false) {
 <?= $navigation ?>
 <div class="site-wrap" id="main"><?= $content ?></div>
 <?= $dialogs ?>
+<script src="/assets/navigation.js" defer></script>
 <script src="/assets/pool-navigation.js" defer></script>
 <script src="/assets/header-parallax.js" defer></script>
 <script src="/assets/footnotes.js" defer></script>
