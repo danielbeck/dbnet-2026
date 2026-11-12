@@ -11,4 +11,5 @@
             <?php endforeach; ?>
         </dl>
     <?php endif; ?>
+    <?= Template::render('pool/related', ['items' => $relatedItems]) ?>
 </main>

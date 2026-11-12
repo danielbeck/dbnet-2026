@@ -83,6 +83,30 @@ final class Content
         return $item ? self::hydratePoolItem($item) : null;
     }
 
+    public static function relatedItems(PDO $db, array $item): array
+    {
+        $exists = $db->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'related_items'")->fetchColumn();
+        if (!$exists) {
+            return [];
+        }
+        $hash = static fn(array $post): string => hash('sha256', $post['title'] . "\0" . $post['body'] . "\0" . $post['format']);
+        $sourceHash = $hash($item);
+        $statement = $db->prepare(
+            'SELECT p.id, p.slug, p.title, p.body, p.format, r.source_hash, r.target_hash
+             FROM related_items r JOIN pool_items p ON p.id = r.target_id
+             WHERE r.source_id = ? ORDER BY r.rank'
+        );
+        $statement->execute([$item['id']]);
+        $related = [];
+        foreach ($statement as $post) {
+            if (hash_equals($post['source_hash'], $sourceHash)
+                && hash_equals($post['target_hash'], $hash($post))) {
+                $related[] = $post;
+            }
+        }
+        return $related;
+    }
+
     public static function hydratePoolItem(array $item): array
     {
         $item['tags'] = json_decode($item['tags'] ?: '[]', true) ?: [];

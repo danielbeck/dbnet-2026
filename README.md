@@ -89,6 +89,21 @@ On screens up to 620px wide, new page loads start at the content heading; scroll
 
 Items can appear beneath any page with a matching tag filter, and every item has a canonical URL under `/archive/`. Archive includes all items. Previous/next links, arrow keys, and swipe navigation follow the list in which the item was opened.
 
+### Exporting pool text
+
+Export every pool item's title and body from `storage/dbnet.sqlite` to one file:
+
+```sh
+php bin/export-pool-text.php > storage/pool-text.txt
+```
+
+Items are ordered oldest first, with ties sorted by ID. Each item occupies exactly
+two lines: title, then body, including empty fields. Embedded newlines (CRLF, LF,
+or CR) become literal `\n` sequences in both fields. HTML/Markdown and existing
+backslashes are preserved as stored; pages, tags, and other metadata are excluded.
+An empty pool produces an empty file. Errors go to standard error and return a
+nonzero exit status; discard a partial export if the command fails.
+
 ### Writing content
 
 Bodies support HTML or GitHub Flavored Markdown, including tables, task lists, headings, lists, links, emphasis, inline HTML, and fenced code blocks. Add a language to a code fence for syntax highlighting, or use `mermaid` for diagrams. Install dependencies with Composer before deploying; the deployment script uploads the installed packages.
@@ -156,6 +171,77 @@ The layout versions its stylesheet and scripts using content hashes, so changed 
 The root `robots.txt` is served as a static file and included in deployments. Edit it directly to update crawler rules; no build step is required.
 
 **It never uploads the database or content media, and never deletes remote files.** Live content and accounts are preserved. Transfer media separately when needed; do not overwrite the live database with a local development copy. Removed code files must be reviewed and cleaned up separately.
+
+### Generating related posts
+
+The standalone local generator reads all pool item types directly from the site
+database. It requires Python 3.10+ and an Ollama server with
+`qwen3-embedding:0.6b` already pulled. Set up an isolated environment once:
+
+```sh
+python3.13 -m venv .venv-related
+.venv-related/bin/python -m pip install -r bin/requirements-related.txt
+```
+
+Preview first, then explicitly publish to the local database:
+
+```sh
+.venv-related/bin/python bin/generate-related.py > storage/related-preview.json
+./publish-related.sh > storage/related-published.json
+```
+
+The shell script publishes to the local `storage/dbnet.sqlite` database. Use the
+Python command directly for custom options.
+
+To publish to the live database instead:
+
+```sh
+./publish-related.sh --live
+```
+
+This uses `DEPLOY_TARGET` and the optional `REMOTE_PHP` setting from `.env`,
+just like deployment and development sync. It asks for confirmation, generates
+links from the local database, and sends only the links plus post IDs, hashes,
+and dates over SSH. The remote PHP CLI needs PDO SQLite and write access to the
+live database. Before replacing links in a transaction, it verifies that every
+live post has the same ID, title, body, format, and date as the local snapshot.
+If posts were added, removed, or edited, publishing fails without changing links;
+sync the local database and regenerate before retrying. Other database tables
+are not replaced. If the SSH connection drops during the commit, check the live
+database before retrying because the outcome may be unknown.
+
+The default Ollama endpoint is `http://192.168.0.98:11434`; use `--host` to
+choose a trusted server, `--model` to select an installed model, and `--help`
+for other options. Post contents are sent to that server. Progress and errors
+go to stderr; JSON summaries and proposed links go to stdout. The first run
+embeds every substantive post and may take a long time. It saves each result in
+the separate private `storage/related-embeddings.sqlite` cache, so interrupted
+or subsequent runs reuse unchanged content. Changing the content, model digest,
+or embedding method triggers regeneration; remove that cache if a completely
+fresh embedding run is desired.
+
+Inputs consist of the title, UTC publication date, and unmodified body. Empty
+or Markdown-heading-only bodies are skipped. Inputs exceeding the 32,768-token
+context are represented by the normalized average of embeddings for overlapping
+2,000-character chunks; inputs are never silently truncated. HDBSCAN uses
+Euclidean distance, minimum cluster size 3 and minimum samples 2. For each
+clustered post, up to 10 same-cluster neighbors are ranked by cosine similarity;
+noise has no links. These parameters can be overridden on the command line.
+
+Preview never changes site links. Publishing replaces all `related_items` rows
+atomically, after checking that the site corpus and model digest have not
+changed; errors preserve the previous links. The site shows links only while
+stored source and target hashes match the current title, body, and format.
+Absent tables or no current links show no section.
+
+**Links are not deployed by `deploy.sh`**; use `--live` to publish them
+separately. Deploy the site code and templates as well to display them.
+`dev.sh` can replace the local database with production data. The separate cache
+remains local and is Git-ignored; keep `storage/` protected from web access.
+Do not overwrite the live database with a local copy.
+
+Run the generator tests with
+`.venv-related/bin/python bin/test-generate-related.py`.
 
 Back up both `storage/dbnet.sqlite` and `content/` regularly. Use a consistent SQLite backup rather than copying an active database file.
 

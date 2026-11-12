@@ -1,6 +1,9 @@
 /storage/*.sqlite*
+/storage/related-*.json
 /content/*
 /.env
 /.env.*
 !/.env.example
 /vendor/
+/.venv-related/
+/bin/__pycache__/

@@ -585,6 +585,7 @@ if ($isAdminRoute) {
             'fields' => Types::get($item['item_type'])['fields'],
             'previousUrl' => $nav['prev'] ? urlForItem($db, $nav['prev'], $context) : null,
             'nextUrl' => $nav['next'] ? urlForItem($db, $nav['next'], $context) : null,
+            'relatedItems' => Content::relatedItems($db, $item),
         ]);
     }
 }
