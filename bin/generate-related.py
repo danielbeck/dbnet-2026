@@ -6,20 +6,24 @@ from bisect import bisect_right
 from collections import Counter
 from datetime import datetime, timezone
 import hashlib
+from importlib.metadata import version
 import json
 import math
 import os
 import re
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 import numpy as np
+from hdbscan import HDBSCAN
+from joblib import Memory
 import sklearn
-from sklearn.cluster import HDBSCAN
+from sklearn.cluster import HDBSCAN as SklearnHDBSCAN
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,7 +32,7 @@ DEFAULT_CACHE = ROOT / "storage" / "related-embeddings.sqlite"
 DEFAULT_HOST = "http://192.168.0.98:11434"
 DEFAULT_MODEL = "qwen3-embedding:0.6b"
 METHOD_VERSION = "site-document-v1-ctx32768-chunks2000-overlap200"
-CLUSTER_METHOD_VERSION = "sklearn-hdbscan-euclidean-eom-no-single-copy-false-v1"
+CLUSTER_METHOD_VERSION = "contrib-hdbscan-generic-euclidean-eom-self-inclusive-v1"
 RELATED_SCHEMA = """
 CREATE TABLE IF NOT EXISTS related_items (
     source_id TEXT NOT NULL REFERENCES pool_items(id) ON DELETE CASCADE,
@@ -235,7 +239,7 @@ def validate_labels(labels, expected):
 
 
 def make_links(ids, vectors, minimum, max_minimum, samples, max_samples, limit, cache=None,
-               cluster_settings=None):
+               cluster_settings=None, memory=None):
     if not 3 <= minimum <= max_minimum <= 10 or not 1 <= samples <= max_samples:
         raise ValueError("Require 3 <= min-cluster-size <= max-cluster-size <= 10 "
                          "and 1 <= min-samples <= max-samples")
@@ -247,9 +251,11 @@ def make_links(ids, vectors, minimum, max_minimum, samples, max_samples, limit, 
     votes = {}
     scans = []
     total = (max_minimum - minimum + 1) * (max_samples - samples + 1)
+    backend_version = "hdbscan={};sklearn={};numpy={};scipy={};joblib={}".format(
+        version("hdbscan"), sklearn.__version__, np.__version__, version("scipy"), version("joblib"))
     for size in range(minimum, max_minimum + 1):
         for sample_count in range(samples, max_samples + 1):
-            key = (fingerprint, sklearn.__version__, CLUSTER_METHOD_VERSION, size, sample_count)
+            key = (fingerprint, backend_version, CLUSTER_METHOD_VERSION, size, sample_count)
             row = None if cache is None else cache.execute(
                 "SELECT labels_json FROM cluster_results WHERE corpus_hash=? AND sklearn_version=? "
                 "AND method_version=? AND min_cluster_size=? AND min_samples=?", key).fetchone()
@@ -261,9 +267,15 @@ def make_links(ids, vectors, minimum, max_minimum, samples, max_samples, limit, 
                     raise ValueError("Invalid cached HDBSCAN result for size {} samples {}: {}".format(
                         size, sample_count, error)) from error
             else:
-                estimator = HDBSCAN(min_cluster_size=size, min_samples=sample_count, metric="euclidean",
-                                    cluster_selection_method="eom", allow_single_cluster=False, n_jobs=1,
-                                    copy=False)
+                if sample_count == 1:
+                    estimator = SklearnHDBSCAN(
+                        min_cluster_size=size, min_samples=1, metric="euclidean",
+                        cluster_selection_method="eom", allow_single_cluster=False, n_jobs=1, copy=False)
+                else:
+                    estimator = HDBSCAN(
+                        min_cluster_size=size, min_samples=sample_count - 1, metric="euclidean",
+                        algorithm="generic", cluster_selection_method="eom", allow_single_cluster=False,
+                        approx_min_span_tree=False, core_dist_n_jobs=1, memory=memory or Memory(location=None))
                 labels = validate_labels(estimator.fit_predict(matrix).tolist(), len(ids))
                 if cache is not None:
                     with cache:
@@ -355,8 +367,10 @@ def run(database, cache_path, host, model, timeout, minimum, samples, limit, pub
             cache.execute(CLUSTER_CACHE_SCHEMA)
             ids, vectors, counts = embeddings_for_posts(posts, cache, host, model, digest, timeout)
             cluster_settings = {} if include_clusters else None
-            links, agreement, scans = make_links(ids, vectors, minimum, max_minimum, samples, max_samples,
-                                                limit, cache, cluster_settings)
+            with tempfile.TemporaryDirectory(prefix="dbnet-related-hierarchy-") as directory:
+                memory = Memory(location=directory, verbose=0)
+                links, agreement, scans = make_links(ids, vectors, minimum, max_minimum, samples, max_samples,
+                                                    limit, cache, cluster_settings, memory)
         finally:
             cache.close()
         if model_digest(host, model, timeout) != digest:

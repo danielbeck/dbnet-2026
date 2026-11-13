@@ -119,7 +119,7 @@ class RelatedTests(unittest.TestCase):
                   np.array([0, 0, -1, 0, -1]),
                   np.array([-1, 0, 0, 0, -1])]
         with patch.object(generator.HDBSCAN, "fit_predict", side_effect=labels):
-            links, votes, scans = generator.make_links(ids, vectors, 3, 3, 1, 3, 10)
+            links, votes, scans = generator.make_links(ids, vectors, 3, 3, 2, 4, 10)
         a = [(target, rank) for source, target, rank, _ in links if source == "a"]
         self.assertEqual(a, [("b", 1), ("d", 2), ("c", 3)])
         self.assertEqual(votes[("a", "b")], 2)
@@ -162,6 +162,28 @@ class RelatedTests(unittest.TestCase):
         self.assertEqual(len(scans), 1)
         self.assertTrue(all(source != target for source, target, _, _ in links))
 
+    def test_hierarchy_cache_reuses_one_fit_per_sample_setting(self):
+        ids = [str(i) for i in range(8)]
+        vectors = [np.array([1., x]) for x in (0., 0.01, 0.02, 0.03, 1., 1.01, 1.02, 1.03)]
+        with tempfile.TemporaryDirectory() as directory:
+            memory = generator.Memory(location=directory, verbose=0)
+            generator.make_links(ids, vectors, 3, 5, 2, 3, 10, memory=memory)
+            cached_hierarchies = list(Path(directory).rglob("output.pkl"))
+            self.assertEqual(len(cached_hierarchies), 2)
+
+    def test_sample_translation_and_single_sample_fallback(self):
+        ids = ["a", "b", "c"]
+        vectors = [np.array([1., x]) for x in (0., 0.1, 0.2)]
+        with patch.object(generator, "HDBSCAN") as contrib, \
+             patch.object(generator, "SklearnHDBSCAN") as sklearn:
+            contrib.return_value.fit_predict.return_value = np.array([0, 0, 0])
+            sklearn.return_value.fit_predict.return_value = np.array([0, 0, 0])
+            generator.make_links(ids, vectors, 3, 3, 1, 3, 10)
+        sklearn.assert_called_once()
+        self.assertEqual(sklearn.call_args.kwargs["min_samples"], 1)
+        self.assertEqual([call.kwargs["min_samples"] for call in contrib.call_args_list], [1, 2])
+        self.assertTrue(all(call.kwargs["algorithm"] == "generic" for call in contrib.call_args_list))
+
     def test_cluster_cache_reuse_corpus_and_version_invalidation(self):
         cache = sqlite3.connect(self.cache)
         self.addCleanup(cache.close)
@@ -170,42 +192,47 @@ class RelatedTests(unittest.TestCase):
         vectors = [np.array([1., x]) for x in (0., 0.1, 0.2, 0.3)]
         labels = np.array([0, 0, 0, -1])
         with patch.object(generator.HDBSCAN, "fit_predict", return_value=labels) as fit:
-            first = generator.make_links(ids, vectors, 3, 3, 1, 2, 10, cache)
+            first = generator.make_links(ids, vectors, 3, 3, 2, 3, 10, cache)
             self.assertEqual(fit.call_count, 2)
-            cached = generator.make_links(ids, vectors, 3, 3, 1, 2, 10, cache)
+            cached = generator.make_links(ids, vectors, 3, 3, 2, 3, 10, cache)
             self.assertEqual(cached, first)
             self.assertEqual(fit.call_count, 2)
-            generator.make_links(ids, vectors, 3, 3, 1, 3, 10, cache)
+            generator.make_links(ids, vectors, 3, 3, 2, 4, 10, cache)
             self.assertEqual(fit.call_count, 3)
-            generator.make_links(ids, vectors, 3, 3, 1, 2, 1, cache)
+            generator.make_links(ids, vectors, 3, 3, 2, 3, 1, cache)
             self.assertEqual(fit.call_count, 3)
-            generator.make_links(["changed"] + ids[1:], vectors, 3, 3, 1, 2, 10, cache)
+            generator.make_links(["changed"] + ids[1:], vectors, 3, 3, 2, 3, 10, cache)
             self.assertEqual(fit.call_count, 5)
             changed = list(vectors)
             changed[0] = np.array([1., 0.001])
-            generator.make_links(ids, changed, 3, 3, 1, 2, 10, cache)
+            generator.make_links(ids, changed, 3, 3, 2, 3, 10, cache)
             self.assertEqual(fit.call_count, 7)
             with patch.object(generator.sklearn, "__version__", "different"):
-                generator.make_links(ids, vectors, 3, 3, 1, 2, 10, cache)
+                generator.make_links(ids, vectors, 3, 3, 2, 3, 10, cache)
             self.assertEqual(fit.call_count, 9)
             with patch.object(generator, "CLUSTER_METHOD_VERSION", "different"):
-                generator.make_links(ids, vectors, 3, 3, 1, 2, 10, cache)
+                generator.make_links(ids, vectors, 3, 3, 2, 3, 10, cache)
             self.assertEqual(fit.call_count, 11)
+            original_version = generator.version
+            with patch.object(generator, "version",
+                              side_effect=lambda name: "different" if name == "hdbscan" else original_version(name)):
+                generator.make_links(ids, vectors, 3, 3, 2, 3, 10, cache)
+            self.assertEqual(fit.call_count, 13)
 
     def test_cluster_cache_resumes_after_interruption(self):
         cache = sqlite3.connect(self.cache)
         self.addCleanup(cache.close)
         cache.execute(generator.CLUSTER_CACHE_SCHEMA)
-        ids = ["a", "b", "c"]
-        vectors = [np.array([1., x]) for x in (0., 0.1, 0.2)]
-        labels = np.array([0, 0, 0])
+        ids = ["a", "b", "c", "d"]
+        vectors = [np.array([1., x]) for x in (0., 0.1, 0.2, 0.3)]
+        labels = np.array([0, 0, 0, -1])
         with patch.object(generator.HDBSCAN, "fit_predict",
                           side_effect=[labels, RuntimeError("interrupted")]):
             with self.assertRaisesRegex(RuntimeError, "interrupted"):
-                generator.make_links(ids, vectors, 3, 3, 1, 2, 10, cache)
+                generator.make_links(ids, vectors, 3, 3, 2, 3, 10, cache)
         self.assertEqual(cache.execute("SELECT COUNT(*) FROM cluster_results").fetchone()[0], 1)
         with patch.object(generator.HDBSCAN, "fit_predict", return_value=labels) as fit:
-            generator.make_links(ids, vectors, 3, 3, 1, 2, 10, cache)
+            generator.make_links(ids, vectors, 3, 3, 2, 3, 10, cache)
             self.assertEqual(fit.call_count, 1)
 
     def test_cluster_cache_rejects_bad_labels(self):
@@ -215,20 +242,20 @@ class RelatedTests(unittest.TestCase):
         ids = ["a", "b", "c"]
         vectors = [np.array([1., x]) for x in (0., 0.1, 0.2)]
         with patch.object(generator.HDBSCAN, "fit_predict", return_value=np.array([0, 0, 0])):
-            generator.make_links(ids, vectors, 3, 3, 1, 1, 10, cache)
+            generator.make_links(ids, vectors, 3, 3, 2, 2, 10, cache)
         for encoded in ('not-json', '[0, 0]', '[0, 0, true]', '[0, 0, 3]'):
             with self.subTest(encoded=encoded):
                 cache.execute("UPDATE cluster_results SET labels_json=?", (encoded,))
                 cache.commit()
                 with self.assertRaisesRegex(ValueError, "Invalid cached HDBSCAN result"):
-                    generator.make_links(ids, vectors, 3, 3, 1, 1, 10, cache)
+                    generator.make_links(ids, vectors, 3, 3, 2, 2, 10, cache)
 
     def test_overlapping_clusters_do_not_create_indirect_pairs(self):
         ids = ["a", "b", "c", "d", "e"]
         vectors = [np.array([1., 0])] * 5
         labels = [np.array([0, 0, 0, -1, -1]), np.array([-1, -1, 0, 0, 0])]
         with patch.object(generator.HDBSCAN, "fit_predict", side_effect=labels):
-            _, agreement, _ = generator.make_links(ids, vectors, 3, 3, 1, 2, 10)
+            _, agreement, _ = generator.make_links(ids, vectors, 3, 3, 2, 3, 10)
         self.assertIn(("a", "c"), agreement)
         self.assertIn(("c", "d"), agreement)
         self.assertNotIn(("a", "d"), agreement)

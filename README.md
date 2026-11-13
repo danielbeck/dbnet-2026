@@ -183,6 +183,9 @@ python3.13 -m venv .venv-related
 .venv-related/bin/python -m pip install -r bin/requirements-related.txt
 ```
 
+For an existing environment, rerun the `pip install` command to install or
+update the generator's dependencies.
+
 Preview first, then explicitly publish to the local database:
 
 ```sh
@@ -255,11 +258,20 @@ smaller scan can be used for a single-setting comparison, for example
 `--min-cluster-size 3 --max-cluster-size 3 --min-samples 2 --max-samples 2`.
 It still excludes clusters larger than 10. Scanning takes longer than the
 previous single HDBSCAN run the first time, even when all embeddings are cached.
+The `hdbscan` library reuses the expensive hierarchy across cluster-size
+settings with the same minimum samples through a private, temporary joblib
+cache. The generic exact algorithm computes a full pairwise distance matrix,
+so its memory use grows quadratically with the number of embedded posts.
+Command-line minimum samples retain the previous scikit-learn convention
+(counting the point itself): the equivalent `hdbscan` value is one lower.
+For the exceptional value `--min-samples 1`, scikit-learn remains in use because
+`hdbscan` cannot represent the corresponding zero-neighbor setting.
+Different implementations can differ on ties or floating-point edge cases.
 
 Each completed HDBSCAN setting is also saved in the same private cache. An
 unchanged rerun reuses those results, and an interrupted scan resumes from its
 completed settings. The cache key includes the ordered post IDs, exact embedding
-vectors, HDBSCAN settings and method, and scikit-learn version. Adding, removing,
+vectors, HDBSCAN settings and method, and relevant library versions. Adding, removing,
 or changing an embedded post invalidates the scan results for the whole corpus,
 because even one change can alter clusters globally. Changing the link limit or
 scan range reuses any applicable fits. Progress reports each setting as
