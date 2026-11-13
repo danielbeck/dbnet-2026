@@ -186,12 +186,19 @@ python3.13 -m venv .venv-related
 Preview first, then explicitly publish to the local database:
 
 ```sh
+.venv-related/bin/python bin/generate-related.py --clusters
+.venv-related/bin/python bin/generate-related.py --links
 .venv-related/bin/python bin/generate-related.py > storage/related-preview.json
-./publish-related.sh > storage/related-published.json
+./publish-related.sh
 ```
 
-The shell script publishes to the local `storage/dbnet.sqlite` database. Use the
-Python command directly for custom options.
+The shell script publishes to the local `storage/dbnet.sqlite` database and
+prints each post's final ranked related links by title, including agreement and
+cosine similarity. Duplicate titles are disambiguated by ID. Use the Python
+command directly for custom options or for machine-readable JSON.
+For readable cluster output while publishing locally, use
+`./publish-related.sh --clusters`. For live publishing, add `--clusters` to
+`--live`; the report goes to stderr while the JSON snapshot is sent over SSH.
 
 To publish to the live database instead:
 
@@ -213,7 +220,9 @@ database before retrying because the outcome may be unknown.
 The default Ollama endpoint is `http://192.168.0.98:11434`; use `--host` to
 choose a trusted server, `--model` to select an installed model, and `--help`
 for other options. Post contents are sent to that server. Progress and errors
-go to stderr; JSON summaries and proposed links go to stdout. The first run
+go to stderr; the Python command prints JSON by default. `--links` prints the
+final ranked links by title instead; `--show-links` prints them to stderr while
+retaining JSON on stdout. The first run
 embeds every substantive post and may take a long time. It saves each result in
 the separate private `storage/related-embeddings.sqlite` cache, so interrupted
 or subsequent runs reuse unchanged content. Changing the content, model digest,
@@ -223,12 +232,42 @@ fresh embedding run is desired.
 Inputs consist of the title, UTC publication date, and unmodified body. Empty
 or Markdown-heading-only bodies are skipped. Inputs exceeding the 32,768-token
 context are represented by the normalized average of embeddings for overlapping
-2,000-character chunks; inputs are never silently truncated. HDBSCAN uses
-Euclidean distance, minimum cluster size 3 and minimum samples 2. For each
-clustered post, up to 10 same-cluster neighbors are ranked by cosine similarity;
-noise has no links. These parameters can be overridden on the command line.
+2,000-character chunks; inputs are never silently truncated. HDBSCAN scans
+72 combinations: minimum cluster sizes 3–10 and minimum samples 2–10, using
+Euclidean distance and EOM selection. Only clusters containing 3–10 posts
+contribute candidates. For each pair, agreement counts how many settings placed
+them together in an eligible cluster; overlapping clusters are not merged
+transitively. Each post's candidates are ranked by descending agreement, then
+cosine similarity, then target ID, with up to 10 links per post. Posts that
+never share an eligible cluster have no links.
 
-Preview never changes site links. Publishing replaces all `related_items` rows
+The JSON preview includes per-setting statistics and each link's agreement
+count. `--clusters` instead prints the distinct candidate clusters with post
+titles and the settings that found each exact membership. Clusters may overlap:
+they are evidence for pairwise links, not a final merged partition. The report
+does not list final links, which can span several candidate clusters. Use
+`--show-clusters` to print the same report to stderr while retaining JSON on
+stdout. The stored similarity remains cosine similarity; the stored rank
+reflects agreement-first ordering. `--min-cluster-size`, `--max-cluster-size`,
+`--min-samples`, and `--max-samples` control the inclusive scan ranges; the
+eligible cluster size remains 3–10. `--limit` controls links per post. A
+smaller scan can be used for a single-setting comparison, for example
+`--min-cluster-size 3 --max-cluster-size 3 --min-samples 2 --max-samples 2`.
+It still excludes clusters larger than 10. Scanning takes longer than the
+previous single HDBSCAN run the first time, even when all embeddings are cached.
+
+Each completed HDBSCAN setting is also saved in the same private cache. An
+unchanged rerun reuses those results, and an interrupted scan resumes from its
+completed settings. The cache key includes the ordered post IDs, exact embedding
+vectors, HDBSCAN settings and method, and scikit-learn version. Adding, removing,
+or changing an embedded post invalidates the scan results for the whole corpus,
+because even one change can alter clusters globally. Changing the link limit or
+scan range reuses any applicable fits. Progress reports each setting as
+`computed` or `cached`. Old cached results remain until the cache is removed.
+
+Preview uses a query-only SQLite connection and never changes site links; the
+database directory must be writable so SQLite can open WAL-mode databases.
+Publishing replaces all `related_items` rows
 atomically, after checking that the site corpus and model digest have not
 changed; errors preserve the previous links. The site shows links only while
 stored source and target hashes match the current title, body, and format.

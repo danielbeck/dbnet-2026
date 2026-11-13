@@ -4,17 +4,26 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="$ROOT/.venv-related/bin/python"
 
-if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--live" ) ]]; then
-    echo "Usage: $0 [--live]" >&2
-    exit 1
-fi
+live=false
+clusters=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --live) live=true ;;
+        --clusters) clusters=true ;;
+        *) echo "Usage: $0 [--live] [--clusters]" >&2; exit 1 ;;
+    esac
+    shift
+done
 if [[ ! -x "$PYTHON" ]]; then
     echo "Related-post environment not found. See the README for setup instructions." >&2
     exit 1
 fi
 
-if [[ $# -eq 0 ]]; then
-    exec "$PYTHON" "$ROOT/bin/generate-related.py" --publish
+if [[ "$live" == false ]]; then
+    if [[ "$clusters" == true ]]; then
+        exec "$PYTHON" "$ROOT/bin/generate-related.py" --publish --clusters
+    fi
+    exec "$PYTHON" "$ROOT/bin/generate-related.py" --publish --links
 fi
 
 if [[ -z "${DEPLOY_TARGET+x}" && -f "$ROOT/.env" ]]; then
@@ -39,6 +48,15 @@ case "$answer" in
 esac
 
 temporary="$(mktemp "${TMPDIR:-/tmp}/dbnet-related.XXXXXXXX")"
-trap 'rm -f -- "$temporary"' EXIT
-"$PYTHON" "$ROOT/bin/generate-related.py" --include-snapshot > "$temporary"
+report_file=""
+trap 'rm -f -- "$temporary"; if [[ -n "$report_file" ]]; then rm -f -- "$report_file"; fi' EXIT
+if [[ "$clusters" == true ]]; then
+    "$PYTHON" "$ROOT/bin/generate-related.py" --include-snapshot --show-clusters > "$temporary"
+else
+    report_file="$(mktemp "${TMPDIR:-/tmp}/dbnet-related-report.XXXXXXXX")"
+    "$PYTHON" "$ROOT/bin/generate-related.py" --include-snapshot --link-report "$report_file" > "$temporary"
+fi
 php "$ROOT/bin/publish-related-live.php" "$DEPLOY_TARGET" "${REMOTE_PHP:-}" "$temporary"
+if [[ -n "$report_file" ]]; then
+    cat -- "$report_file"
+fi
