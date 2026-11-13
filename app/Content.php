@@ -273,11 +273,19 @@ final class Content
         usort($items, static fn(array $a, array $b): int => $sort === 'asc'
             ? ((int)$a['date'] <=> (int)$b['date'])
             : ((int)$b['date'] <=> (int)$a['date']));
-        if (isset($attrs['limit']) && preg_match('/^\d+$/', (string)$attrs['limit'])) {
-            $items = array_slice($items, 0, (int)$attrs['limit']);
-        } elseif (isset($attrs['limit']) && preg_match('/^\[(\d+),\s*(\d+|\*)\]$/', (string)$attrs['limit'], $range)) {
-            $start = max(0, (int)$range[1] - 1);
-            $items = array_slice($items, $start, $range[2] === '*' ? null : max(0, (int)$range[2] - $start));
+        if (isset($attrs['limit'])) {
+            $limit = (string)$attrs['limit'];
+            if (preg_match('/^\d+$/', $limit)) {
+                $items = array_slice($items, 0, (int)$limit);
+            } else {
+                if (str_starts_with($limit, '[') && str_ends_with($limit, ']')) {
+                    $limit = substr($limit, 1, -1);
+                }
+                if (preg_match('/^(\d+),\s*(\d+|\*)$/', $limit, $range)) {
+                    $start = max(0, (int)$range[1] - 1);
+                    $items = array_slice($items, $start, $range[2] === '*' ? null : max(0, (int)$range[2] - $start));
+                }
+            }
         }
 
         $type = strtolower((string)($attrs['type'] ?? 'list'));

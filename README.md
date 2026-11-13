@@ -122,7 +122,7 @@ For `pool-list`:
 - `page`: a page ID whose tag filter should be used
 - `type`: a registered view, normally `list`, `summary`, or `image`
 - `sort`: `asc` or `desc`
-- `limit`: a count or `[start,end]` range
+- `limit`: a count or a one-based, inclusive range such as `11,20` or `11,*` (through the end). Bracketed ranges such as `[11,*]` are also supported.
 
 A tagged page gets an automatic item list unless its body already contains a pool-list tag. An explicit `tag` filter overrides the page filter.
 
