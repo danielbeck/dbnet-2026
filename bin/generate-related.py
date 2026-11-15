@@ -316,6 +316,86 @@ def make_links(ids, vectors, minimum, max_minimum, samples, max_samples, limit, 
     return links, agreement, scans
 
 
+def compare_neighbors(ids, vectors, links, limit):
+    """Compare agreement-ranked links with exact cosine neighbors, excluding self."""
+    matrix = np.vstack(vectors)
+    normalized = matrix / np.linalg.norm(matrix, axis=1)[:, None]
+    neighbors_per_post = min(limit, len(ids) - 1)
+    by_source = {}
+    for source, target, rank, _score in links:
+        by_source.setdefault(source, []).append((rank, target))
+    comparisons = []
+    for index, source in enumerate(ids):
+        scores = np.clip(normalized @ normalized[index], -1, 1)
+        candidates = sorted((i for i in range(len(ids)) if i != index),
+                            key=lambda i: (-float(scores[i]), ids[i]))
+        neighbors = candidates[:neighbors_per_post]
+        neighbor_ids = [ids[i] for i in neighbors]
+        clustered = [target for _rank, target in sorted(by_source.get(source, []))]
+        common = set(clustered) & set(neighbor_ids)
+        matched_common = set(clustered) & set(neighbor_ids[:len(clustered)])
+        comparisons.append({
+            "source_id": source, "hdbscan_targets": clustered,
+            "neighbors": [{"target_id": ids[i], "similarity": float(scores[i])} for i in neighbors],
+            "common_count": len(common),
+            "top_k_overlap": len(common) / neighbors_per_post,
+            "matched_length_overlap": len(matched_common) / len(clustered) if clustered else None,
+            "same_first_target": clustered[0] == neighbor_ids[0] if clustered else None,
+        })
+    linked = [item for item in comparisons if item["hdbscan_targets"]]
+    link_count = sum(len(item["hdbscan_targets"]) for item in comparisons)
+    result = {
+        "metric": "cosine_similarity", "exact_search": True,
+        "neighbors_per_post": neighbors_per_post, "posts_compared": len(ids),
+        "posts_with_hdbscan_links": len(linked), "hdbscan_coverage": len(linked) / len(ids),
+        "mean_top_k_overlap_all_posts": sum(item["top_k_overlap"] for item in comparisons) / len(ids),
+        "mean_matched_length_overlap_linked_posts": (
+            sum(item["matched_length_overlap"] for item in linked) / len(linked) if linked else None),
+        "hdbscan_links_in_neighbor_top_k_fraction": (
+            sum(item["common_count"] for item in comparisons) / link_count if link_count else None),
+        "same_first_target_fraction_linked_posts": (
+            sum(item["same_first_target"] for item in linked) / len(linked) if linked else None),
+        "per_post": comparisons,
+    }
+    score_counts = Counter(neighbor["similarity"] for item in comparisons for neighbor in item["neighbors"])
+    retained = 0
+    best_count = 0
+    cutoff = None
+    for score, count in sorted(score_counts.items(), reverse=True):
+        retained += count
+        if abs(retained - link_count) < abs(best_count - link_count):
+            best_count = retained
+            cutoff = score
+    common_count = neighbor_posts = both_posts = same_first = 0
+    for item in comparisons:
+        filtered = [neighbor for neighbor in item["neighbors"]
+                    if cutoff is not None and neighbor["similarity"] >= cutoff]
+        item["filtered_neighbors"] = filtered
+        clustered = set(item["hdbscan_targets"])
+        shared = len(clustered & {neighbor["target_id"] for neighbor in filtered})
+        item["filtered_common_count"] = shared
+        common_count += shared
+        neighbor_posts += bool(filtered)
+        if clustered and filtered:
+            both_posts += 1
+            same_first += item["hdbscan_targets"][0] == filtered[0]["target_id"]
+    result["distance_filtered"] = {
+        "minimum_cosine_similarity": cutoff,
+        "maximum_cosine_distance": 1 - cutoff if cutoff is not None else None,
+        "target_links": link_count, "retained_links": best_count,
+        "link_count_difference": best_count - link_count,
+        "shared_links": common_count, "posts_with_links": neighbor_posts,
+        "coverage": neighbor_posts / len(ids),
+        "shared_fraction_of_hdbscan_links": common_count / link_count if link_count else None,
+        "shared_fraction_of_filtered_links": common_count / best_count if best_count else None,
+        "link_set_jaccard": common_count / (link_count + best_count - common_count)
+        if link_count + best_count else None,
+        "posts_with_links_in_both": both_posts,
+        "same_first_target_fraction_both": same_first / both_posts if both_posts else None,
+    }
+    return result
+
+
 def publish_links(connection, posts, links):
     connection.execute("PRAGMA foreign_keys=ON")
     try:
@@ -339,7 +419,9 @@ def publish_links(connection, posts, links):
 
 def run(database, cache_path, host, model, timeout, minimum, samples, limit, publish,
         include_snapshot=False, max_minimum=10, max_samples=10, include_clusters=False,
-        include_link_titles=False):
+        include_link_titles=False, include_neighbor_comparison=False):
+    if publish and include_neighbor_comparison:
+        raise ValueError("Nearest-neighbor comparison is preview-only")
     database, cache_path = database.resolve(), cache_path.resolve()
     if database == cache_path or (cache_path.exists() and database.samefile(cache_path)):
         raise ValueError("Site database and embedding cache must be different files")
@@ -390,8 +472,10 @@ def run(database, cache_path, host, model, timeout, minimum, samples, limit, pub
         if include_snapshot:
             result["snapshot"] = [{"id": identifier, "hash": site_hash(title, body, fmt), "date": date}
                                   for identifier, title, body, fmt, date in posts]
-        if include_link_titles:
+        if include_link_titles or include_neighbor_comparison:
             result["link_titles"] = {identifier: title for identifier, title, _body, _fmt, _date in posts}
+        if include_neighbor_comparison:
+            result["neighbor_comparison"] = compare_neighbors(ids, vectors, links, limit)
         if cluster_settings is not None:
             titles = {identifier: title for identifier, title, _body, _fmt, _date in posts}
             result["candidate_clusters"] = [
@@ -451,6 +535,75 @@ def format_link_report(result):
     return "\n".join(lines)
 
 
+def format_neighbor_comparison(result):
+    comparison = result["neighbor_comparison"]
+    filtered = comparison["distance_filtered"]
+    titles = result["link_titles"]
+    k = comparison["neighbors_per_post"]
+
+    def percentage(value):
+        return "n/a" if value is None else "{:.1%}".format(value)
+
+    def display(identifier):
+        return "{} [id: {}]".format(json.dumps(titles[identifier], ensure_ascii=False), identifier)
+
+    differing = [item for item in comparison["per_post"]
+                 if item["hdbscan_targets"] != [neighbor["target_id"] for neighbor in item["filtered_neighbors"]]]
+    lines = [
+        "HDBSCAN vs distance-filtered cosine neighbors (preview only)",
+        "Model: {}; digest: {}".format(result["model"], result["model_digest"]),
+        "Scan: min_cluster_size {}; min_samples {}; eligible cluster sizes {}".format(
+            result["min_cluster_size_range"], result["min_samples_range"],
+            result["candidate_cluster_size_range"]),
+        "Compared {} embedded posts; up to {} neighbors per post; self excluded.".format(
+            comparison["posts_compared"], k),
+        "HDBSCAN coverage: {} ({} posts)".format(
+            percentage(comparison["hdbscan_coverage"]), comparison["posts_with_hdbscan_links"]),
+        "Overlap measures agreement, not recommendation quality.",
+        "HDBSCAN retains its existing Euclidean fits; only the neighbor baseline uses cosine.",
+        "",
+        "Distance-filtered cosine baseline (global cutoff calibrated to total HDBSCAN links):",
+        "Keep cosine similarity >= {}; equivalently cosine distance <= {}.".format(
+            repr(filtered["minimum_cosine_similarity"]), repr(filtered["maximum_cosine_distance"]))
+        if filtered["minimum_cosine_similarity"] is not None else "Keep no cosine links (empty selection).",
+        "Retained links: {}; HDBSCAN target: {}; difference: {:+d}.".format(
+            filtered["retained_links"], filtered["target_links"], filtered["link_count_difference"]),
+        "Equal-score ties stay together; closest achievable count wins; equally close counts prefer fewer links.",
+        "Filtered cosine coverage: {} ({} posts); HDBSCAN coverage: {}.".format(
+            percentage(filtered["coverage"]), filtered["posts_with_links"],
+            percentage(comparison["hdbscan_coverage"])),
+        "Shared directed links: {}; fraction of HDBSCAN links: {}; fraction of filtered cosine links: {}.".format(
+            filtered["shared_links"], percentage(filtered["shared_fraction_of_hdbscan_links"]),
+            percentage(filtered["shared_fraction_of_filtered_links"])),
+        "Directed-link set Jaccard: {}.".format(percentage(filtered["link_set_jaccard"])),
+        "Same first recommendation among {} posts with links in both: {}.".format(
+            filtered["posts_with_links_in_both"], percentage(filtered["same_first_target_fraction_both"])),
+        "The cutoff matches recommendation volume on this corpus, not relevance or a transferable quality threshold.",
+        "Summary metrics cover all posts. Showing {} posts with differing membership or ranking; {} identical lists omitted.".format(
+            len(differing), comparison["posts_compared"] - len(differing)),
+    ]
+    for item in sorted(differing,
+                       key=lambda item: (titles[item["source_id"]].casefold(), item["source_id"])):
+        clustered = item["hdbscan_targets"]
+        common = set(clustered) & {neighbor["target_id"] for neighbor in item["filtered_neighbors"]}
+        lines.append("\n{}: {} shared; HDBSCAN {}; filtered cosine {}".format(
+            display(item["source_id"]), len(common), len(clustered), len(item["filtered_neighbors"])))
+        lines.append("  HDBSCAN (agreement-first order; * = in both lists):")
+        for rank, target in enumerate(clustered, 1):
+            lines.append("    {}. {}{}".format(rank, display(target), " *" if target in common else ""))
+        if not clustered:
+            lines.append("    No eligible cluster links.")
+        lines.append("  Distance-filtered cosine neighbors ({} shared with HDBSCAN):".format(
+            item["filtered_common_count"]))
+        for rank, neighbor in enumerate(item["filtered_neighbors"], 1):
+            target = neighbor["target_id"]
+            lines.append("    {}. {} (cosine {:.3f}){}".format(
+                rank, display(target), neighbor["similarity"], " *" if target in clustered else ""))
+        if not item["filtered_neighbors"]:
+            lines.append("    No neighbors pass the global cutoff.")
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, default=DEFAULT_DATABASE)
@@ -476,9 +629,13 @@ def main():
                         help="Print final related links by title instead of JSON")
     report.add_argument("--show-links", action="store_true",
                         help="Print final links by title to stderr, retaining JSON on stdout")
+    report.add_argument("--compare-neighbors", action="store_true",
+                        help="Preview HDBSCAN vs exact cosine neighbors using the same embeddings; no publishing")
     parser.add_argument("--link-report", type=Path,
                         help="Write final links by title to a separate file while retaining JSON on stdout")
     args = parser.parse_args()
+    if args.compare_neighbors and (args.publish or args.include_snapshot or args.link_report):
+        parser.error("--compare-neighbors is a standalone preview; cannot publish, include a snapshot, or write a link report")
     if (args.clusters or args.links) and args.include_snapshot:
         parser.error("--clusters and --links cannot be combined with --include-snapshot; "
                      "use --show-clusters or --show-links")
@@ -490,7 +647,10 @@ def main():
         result = run(args.database, args.cache, args.host, args.model, args.timeout,
                      args.min_cluster_size, args.min_samples, args.limit, args.publish,
                      args.include_snapshot, args.max_cluster_size, args.max_samples,
-                     args.clusters or args.show_clusters, args.links or args.show_links or bool(args.link_report))
+                     args.clusters or args.show_clusters, args.links or args.show_links or bool(args.link_report),
+                     args.compare_neighbors)
+        if args.compare_neighbors:
+            print(format_neighbor_comparison(result))
         if args.clusters or args.show_clusters:
             print(format_cluster_report(result), file=sys.stderr if args.show_clusters else sys.stdout)
             del result["candidate_clusters"]
@@ -500,7 +660,7 @@ def main():
             args.link_report.write_text(format_link_report(result) + "\n", encoding="utf-8")
         if args.links or args.show_links or args.link_report:
             del result["link_titles"]
-        if not (args.clusters or args.links):
+        if not (args.clusters or args.links or args.compare_neighbors):
             print(json.dumps(result, indent=2, allow_nan=False))
     except (OSError, sqlite3.Error, ValueError, RuntimeError) as error:
         print("Error: {}".format(error), file=sys.stderr)

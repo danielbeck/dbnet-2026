@@ -128,6 +128,160 @@ class RelatedTests(unittest.TestCase):
         self.assertEqual(len(scans), 3)
         self.assertEqual([scan["candidate_clusters"] for scan in scans], [1, 1, 1])
 
+    def test_neighbor_comparison_metrics_cosine_self_exclusion_and_abstention(self):
+        ids = ["a", "b", "c", "d"]
+        vectors = [np.array(value, dtype=float) for value in ((1, 0), (10, 0), (0.8, 0.6), (0, 1))]
+        links = [("a", "d", 2, 0.), ("a", "c", 1, 0.8),
+                 ("c", "a", 1, 0.8), ("d", "c", 1, 0.6)]
+        result = generator.compare_neighbors(ids, vectors, links, 2)
+        first = result["per_post"][0]
+        self.assertEqual(first["hdbscan_targets"], ["c", "d"])
+        self.assertEqual([item["target_id"] for item in first["neighbors"]], ["b", "c"])
+        self.assertAlmostEqual(first["neighbors"][0]["similarity"], 1.)
+        self.assertEqual(first["common_count"], 1)
+        self.assertEqual(first["matched_length_overlap"], 0.5)
+        self.assertEqual(result["hdbscan_coverage"], 0.75)
+        self.assertEqual(result["mean_top_k_overlap_all_posts"], 0.375)
+        self.assertAlmostEqual(result["mean_matched_length_overlap_linked_posts"], 5 / 6)
+        self.assertEqual(result["hdbscan_links_in_neighbor_top_k_fraction"], 0.75)
+        self.assertAlmostEqual(result["same_first_target_fraction_linked_posts"], 2 / 3)
+        self.assertIsNone(result["per_post"][1]["matched_length_overlap"])
+        for item in result["per_post"]:
+            self.assertNotIn(item["source_id"], [neighbor["target_id"] for neighbor in item["neighbors"]])
+
+    def test_neighbor_comparison_ties_small_corpus_and_no_links(self):
+        result = generator.compare_neighbors(["c", "a", "b"], [np.array([1., 0])] * 3, [], 10)
+        self.assertEqual(result["neighbors_per_post"], 2)
+        self.assertEqual([item["target_id"] for item in result["per_post"][0]["neighbors"]], ["a", "b"])
+        self.assertEqual(result["mean_top_k_overlap_all_posts"], 0.)
+        self.assertIsNone(result["mean_matched_length_overlap_linked_posts"])
+        self.assertIsNone(result["hdbscan_links_in_neighbor_top_k_fraction"])
+        self.assertIsNone(result["same_first_target_fraction_linked_posts"])
+        json.dumps(result, allow_nan=False)
+
+    def test_neighbor_comparison_preview_reuses_fits_without_publishing(self):
+        with patch.object(generator, "model_digest", return_value="abc"), \
+             patch.object(generator, "embed_document", return_value=("full_document", np.array([1., 2.]))), \
+             patch.object(generator.HDBSCAN, "fit_predict", return_value=np.array([0, 0, 0])):
+            baseline = generator.run(self.database, self.cache, "http://host", "model", 1, 3, 2, 10,
+                                     False, max_minimum=3, max_samples=2)
+        with patch.object(generator, "model_digest", return_value="abc"), \
+             patch.object(generator, "embed_document", side_effect=AssertionError("embedding cache missed")), \
+             patch.object(generator.HDBSCAN, "fit_predict", side_effect=AssertionError("fit cache missed")):
+            compared = generator.run(self.database, self.cache, "http://host", "model", 1, 3, 2, 10,
+                                     False, max_minimum=3, max_samples=2, include_neighbor_comparison=True)
+        self.assertEqual(compared["proposals"], baseline["proposals"])
+        self.assertEqual(compared["neighbor_comparison"]["mean_top_k_overlap_all_posts"], 1.)
+        self.assertEqual(self.site.execute(
+            "SELECT count(*) FROM sqlite_master WHERE name='related_items'").fetchone()[0], 0)
+        report = generator.format_neighbor_comparison(compared)
+        self.assertIn("preview only", report)
+        self.assertNotIn('"Alpha" [id: a]', report)
+        self.assertIn("Overlap measures agreement, not recommendation quality.", report)
+        self.assertIn("Distance-filtered cosine baseline", report)
+        self.assertIn("Retained links: 6; HDBSCAN target: 6; difference: +0.", report)
+        self.assertIn("Showing 0 posts with differing membership or ranking; 3 identical lists omitted.", report)
+        self.assertIn("100.0%", report)
+
+    def test_comparison_report_only_displays_filtered_list_differences(self):
+        ids = ["a", "b", "c", "d", "e"]
+        comparison = generator.compare_neighbors(ids, [np.array([1., 0])] * 5, [], 2)
+        cases = [
+            (["b"], ["b"]),
+            ([], []),
+            (["a", "b"], ["b", "a"]),
+            (["a"], []),
+            ([], ["a"]),
+        ]
+        for item, (clustered, neighbors) in zip(comparison["per_post"], cases):
+            item["hdbscan_targets"] = clustered
+            item["filtered_neighbors"] = [{"target_id": target, "similarity": 0.9} for target in neighbors]
+            item["filtered_common_count"] = len(set(clustered) & set(neighbors))
+        result = {"neighbor_comparison": comparison, "link_titles": dict(zip(ids, ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"])),
+                  "model": "model", "model_digest": "digest", "min_cluster_size_range": [3, 10],
+                  "min_samples_range": [2, 10], "candidate_cluster_size_range": [3, 10]}
+        report = generator.format_neighbor_comparison(result)
+        self.assertIn("Showing 3 posts with differing membership or ranking; 2 identical lists omitted.", report)
+        self.assertNotIn('\n"Alpha" [id: a]:', report)
+        self.assertNotIn('\n"Beta" [id: b]:', report)
+        for title, identifier in (("Gamma", "c"), ("Delta", "d"), ("Epsilon", "e")):
+            self.assertIn('\n"{}" [id: {}]:'.format(title, identifier), report)
+        self.assertNotIn("  Cosine nearest neighbors:", report)
+        self.assertNotIn("Mean top-", report)
+        self.assertIn('1. "Alpha" [id: a] *', report)
+        self.assertIn("No eligible cluster links.", report)
+        self.assertIn("No neighbors pass the global cutoff.", report)
+
+    def test_distance_cutoff_matches_link_volume_and_preserves_original_neighbors(self):
+        ids = ["a", "b", "c", "d"]
+        vectors = [np.array(value, dtype=float) for value in ((1, 0), (10, 0), (0.8, 0.6), (0, 1))]
+        links = [("a", "c", 1, 0.8), ("a", "d", 2, 0.),
+                 ("c", "a", 1, 0.8), ("d", "c", 1, 0.6)]
+        result = generator.compare_neighbors(ids, vectors, links, 2)
+        filtered = result["distance_filtered"]
+        self.assertEqual(filtered["target_links"], 4)
+        self.assertEqual(filtered["retained_links"], 2)
+        self.assertEqual(filtered["link_count_difference"], -2)
+        self.assertAlmostEqual(filtered["minimum_cosine_similarity"], 1.)
+        self.assertAlmostEqual(filtered["maximum_cosine_distance"], 0.)
+        self.assertEqual(filtered["shared_links"], 0)
+        self.assertEqual(filtered["shared_fraction_of_hdbscan_links"], 0.)
+        self.assertEqual(filtered["shared_fraction_of_filtered_links"], 0.)
+        self.assertEqual(filtered["link_set_jaccard"], 0.)
+        self.assertEqual(filtered["posts_with_links"], 2)
+        self.assertEqual(filtered["posts_with_links_in_both"], 1)
+        self.assertEqual(filtered["same_first_target_fraction_both"], 0.)
+        self.assertEqual(len(result["per_post"][3]["neighbors"]), 2)
+        self.assertEqual(result["per_post"][3]["filtered_neighbors"], [])
+        self.assertEqual(sum(len(item["filtered_neighbors"]) for item in result["per_post"]), 2)
+        for item in result["per_post"]:
+            self.assertTrue(all(neighbor["similarity"] >= filtered["minimum_cosine_similarity"]
+                                for neighbor in item["filtered_neighbors"]))
+
+    def test_distance_cutoff_exact_match_zero_links_and_equal_count_tie(self):
+        ids = ["a", "b", "c"]
+        vectors = [np.array(value, dtype=float) for value in ((1, 0), (0.8, 0.6), (0, 1))]
+        links = [("a", "b", 1, 0.8), ("b", "a", 1, 0.8)]
+        exact = generator.compare_neighbors(ids, vectors, links, 2)["distance_filtered"]
+        self.assertEqual(exact["retained_links"], 2)
+        self.assertEqual(exact["link_count_difference"], 0)
+        self.assertEqual(exact["link_set_jaccard"], 1.)
+        self.assertEqual(exact["shared_fraction_of_hdbscan_links"], 1.)
+        self.assertEqual(exact["shared_fraction_of_filtered_links"], 1.)
+        self.assertEqual(exact["same_first_target_fraction_both"], 1.)
+        tied = generator.compare_neighbors(ids, vectors, links[:1], 2)["distance_filtered"]
+        self.assertEqual(tied["retained_links"], 0)
+        self.assertIsNone(tied["maximum_cosine_distance"])
+        empty_result = generator.compare_neighbors(ids, vectors, [], 2)
+        empty = empty_result["distance_filtered"]
+        self.assertEqual(empty["retained_links"], 0)
+        self.assertEqual(empty["coverage"], 0.)
+        self.assertIsNone(empty["link_set_jaccard"])
+        self.assertIsNone(empty["same_first_target_fraction_both"])
+        self.assertTrue(all(item["filtered_neighbors"] == [] for item in empty_result["per_post"]))
+        json.dumps(empty_result, allow_nan=False)
+
+    def test_neighbor_comparison_cli_and_publish_guards(self):
+        with patch.object(sys, "argv", ["generator", "--compare-neighbors"]), \
+             patch.object(generator, "run", return_value={}) as run, \
+             patch.object(generator, "format_neighbor_comparison", return_value="Comparison"), \
+             redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(generator.main(), 0)
+        self.assertTrue(run.call_args.args[-1])
+        self.assertFalse(run.call_args.args[8])
+        self.assertEqual(output.getvalue(), "Comparison\n")
+        for options in (["--publish"], ["--include-snapshot"], ["--link-report", "report.txt"]):
+            with self.subTest(options=options), \
+                 patch.object(sys, "argv", ["generator", "--compare-neighbors", *options]), \
+                 patch.object(generator, "run") as run, redirect_stderr(io.StringIO()), \
+                 self.assertRaises(SystemExit) as error:
+                generator.main()
+            self.assertEqual(error.exception.code, 2)
+            run.assert_not_called()
+        with self.assertRaisesRegex(ValueError, "preview-only"):
+            generator.run(self.database, self.cache, "http://host", "model", 1, 3, 2, 10,
+                          True, include_neighbor_comparison=True)
+
     def test_exact_cluster_bounds_noise_and_limit(self):
         ids = [str(i).zfill(2) for i in range(25)]
         vectors = [np.array([1., 0])] * 25

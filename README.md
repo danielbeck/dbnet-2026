@@ -277,6 +277,37 @@ because even one change can alter clusters globally. Changing the link limit or
 scan range reuses any applicable fits. Progress reports each setting as
 `computed` or `cached`. Old cached results remain until the cache is removed.
 
+Compare the current HDBSCAN recommendations with exact cosine nearest neighbors:
+
+```sh
+.venv-related/bin/python bin/generate-related.py --compare-neighbors
+```
+
+This preview uses the same embedded posts and vectors for both methods, excludes
+self-matches, and reuses cached embeddings and cluster fits. It never publishes
+links. The existing HDBSCAN Euclidean metric, 3–10-post eligibility filter, and
+agreement-first ranking are unchanged; the baseline ranks all other embedded
+posts by cosine similarity, breaking ties by target ID. `--limit` sets the
+maximum list length for both methods (default 10).
+
+The report shows only HDBSCAN and distance-filtered cosine recommendations,
+and only posts where list membership or ranking differs. Identical lists,
+including two empty lists, are omitted. Summary metrics still cover all posts.
+Undefined metrics are shown as `n/a`. Per-post lists include titles and IDs,
+with shared recommendations marked by `*`. Agreement does not establish which
+method gives better recommendations; inspect disagreements for relevance.
+
+The comparison also calibrates one global cosine-distance cutoff over the
+top-K neighbor lists to retain approximately as many directed links as HDBSCAN.
+It keeps whole equal-score groups, chooses the closest achievable total, and
+prefers fewer links when two totals are equally close. An empty selection is
+allowed. Cosine distance is `1 - cosine similarity`; the inclusive cutoff and
+actual count difference are reported. This calibration matches link volume,
+not the number of posts receiving recommendations or recommendation quality.
+The filtered comparison includes coverage, shared links as a fraction of each
+method's links, directed-link set Jaccard, and first-target agreement among posts
+with links in both methods. The fitted cutoff is corpus-specific.
+
 Preview uses a query-only SQLite connection and never changes site links; the
 database directory must be writable so SQLite can open WAL-mode databases.
 Publishing replaces all `related_items` rows
